@@ -1,0 +1,37 @@
+{
+  "name": "dev2",
+  "registered": true,
+  "type": "dev",
+  "count": 200,
+  "sources": [
+    {
+      "stream": "agent:dev2:in",
+      "direction": "in",
+      "filtered_by_from": null,
+      "filtered_by_to": null,
+      "matched": 0
+    },
+    {
+      "stream": "orch:in:agent",
+      "direction": "out",
+      "filtered_by_from": "dev2",
+      "filtered_by_to": null,
+      "matched": 1
+    }
+  ],
+  "coverage_note": "「发出」只覆盖发给编排者的那部分（orch:in:agent / orch:out）。它发给其它 agent 的消息由 relay 直接投进对方的收件流，不在这里。",
+  "coverage_next": "想看它发给某个 agent 的消息，用**那个 agent 的名字**再查一次：/api/messages?to=<对方名字> —— 那些消息在对方的收件流里，会以 direction=in 出现。",
+  "messages": [
+    {
+      "id": "1790000010000-0",
+      "from": "dev2",
+      "to": "orchestrator",
+      "text": "撞了限额，等额度回来。",
+      "job_id": "j-d2-1",
+      "timestamp": "@now-21m",
+      "kind": "notice",
+      "stream": "orch:in:agent",
+      "direction": "out"
+    }
+  ]
+}

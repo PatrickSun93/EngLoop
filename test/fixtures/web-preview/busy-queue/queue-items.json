@@ -1,0 +1,158 @@
+{
+  "groups": [
+    {
+      "recipient": "dev",
+      "queued": 0,
+      "in_flight": 6,
+      "streams": [
+        "agent:dev:in"
+      ],
+      "errors": [],
+      "items": [
+        {
+          "id": "@now-30m-0",
+          "from": "JARVIS",
+          "to": "dev",
+          "text": "dev 的第 1 条：已经领走、还没干完",
+          "job_id": "j-dev-in_flight-0",
+          "timestamp": "@now-30m",
+          "state": "in_flight",
+          "stream": "agent:dev:in",
+          "group": "agent:dev"
+        },
+        {
+          "id": "@now-29m-0",
+          "from": "JARVIS",
+          "to": "dev",
+          "text": "dev 的第 2 条：已经领走、还没干完",
+          "job_id": "j-dev-in_flight-1",
+          "timestamp": "@now-29m",
+          "state": "in_flight",
+          "stream": "agent:dev:in",
+          "group": "agent:dev"
+        },
+        {
+          "id": "@now-28m-0",
+          "from": "JARVIS",
+          "to": "dev",
+          "text": "dev 的第 3 条：已经领走、还没干完",
+          "job_id": "j-dev-in_flight-2",
+          "timestamp": "@now-28m",
+          "state": "in_flight",
+          "stream": "agent:dev:in",
+          "group": "agent:dev"
+        },
+        {
+          "id": "@now-27m-0",
+          "from": "JARVIS",
+          "to": "dev",
+          "text": "dev 的第 4 条：已经领走、还没干完",
+          "job_id": "j-dev-in_flight-3",
+          "timestamp": "@now-27m",
+          "state": "in_flight",
+          "stream": "agent:dev:in",
+          "group": "agent:dev"
+        },
+        {
+          "id": "@now-26m-0",
+          "from": "JARVIS",
+          "to": "dev",
+          "text": "dev 的第 5 条：已经领走、还没干完",
+          "job_id": "j-dev-in_flight-4",
+          "timestamp": "@now-26m",
+          "state": "in_flight",
+          "stream": "agent:dev:in",
+          "group": "agent:dev"
+        },
+        {
+          "id": "@now-25m-0",
+          "from": "JARVIS",
+          "to": "dev",
+          "text": "dev 的第 6 条：已经领走、还没干完",
+          "job_id": "j-dev-in_flight-5",
+          "timestamp": "@now-25m",
+          "state": "in_flight",
+          "stream": "agent:dev:in",
+          "group": "agent:dev"
+        }
+      ]
+    },
+    {
+      "recipient": "senior",
+      "queued": 5,
+      "in_flight": 1,
+      "streams": [
+        "agent:senior:in"
+      ],
+      "errors": [],
+      "items": [
+        {
+          "id": "@now-30m-0",
+          "from": "JARVIS",
+          "to": "senior",
+          "text": "senior 的第 1 条：已经领走、还没干完",
+          "job_id": "j-senior-in_flight-0",
+          "timestamp": "@now-30m",
+          "state": "in_flight",
+          "stream": "agent:senior:in",
+          "group": "agent:senior"
+        },
+        {
+          "id": "@now-30m-1",
+          "from": "JARVIS",
+          "to": "senior",
+          "text": "senior 的第 1 条：还在排队、没投出去",
+          "job_id": "j-senior-queued-0",
+          "timestamp": "@now-30m",
+          "state": "queued",
+          "stream": "agent:senior:in",
+          "group": "agent:senior"
+        },
+        {
+          "id": "@now-29m-0",
+          "from": "JARVIS",
+          "to": "senior",
+          "text": "senior 的第 2 条：还在排队、没投出去",
+          "job_id": "j-senior-queued-1",
+          "timestamp": "@now-29m",
+          "state": "queued",
+          "stream": "agent:senior:in",
+          "group": "agent:senior"
+        },
+        {
+          "id": "@now-28m-0",
+          "from": "JARVIS",
+          "to": "senior",
+          "text": "senior 的第 3 条：还在排队、没投出去",
+          "job_id": "j-senior-queued-2",
+          "timestamp": "@now-28m",
+          "state": "queued",
+          "stream": "agent:senior:in",
+          "group": "agent:senior"
+        },
+        {
+          "id": "@now-27m-0",
+          "from": "JARVIS",
+          "to": "senior",
+          "text": "senior 的第 4 条：还在排队、没投出去",
+          "job_id": "j-senior-queued-3",
+          "timestamp": "@now-27m",
+          "state": "queued",
+          "stream": "agent:senior:in",
+          "group": "agent:senior"
+        },
+        {
+          "id": "@now-26m-0",
+          "from": "JARVIS",
+          "to": "senior",
+          "text": "senior 的第 5 条：还在排队、没投出去",
+          "job_id": "j-senior-queued-4",
+          "timestamp": "@now-26m",
+          "state": "queued",
+          "stream": "agent:senior:in",
+          "group": "agent:senior"
+        }
+      ]
+    }
+  ]
+}

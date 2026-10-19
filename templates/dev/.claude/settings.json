@@ -1,0 +1,41 @@
+{
+  "_note": [
+    "dev agent 的权限，跟 lib/agent-capabilities.js 里 dev 那行一致。",
+    "⚠️ 这份文件不是防线：agent / worker 起 claude 时带 `--setting-sources user`，cwd 里的这份**不加载**。",
+    "   真正生效的权限是 lib/agent-settings.js 按 lib/agent-capabilities.js 生成、用 `--settings` 注入的那份",
+    "   （PreToolUse hook 也由它用绝对路径重新给）。这份是能力表的**意图声明**，test/templates.test.js 守着两边一致。",
+    "",
+    "dev 有 web + bash + write 三样：这是一个明确的决定，打破了「能上网的不给执行和写盘」那条不变量 ——",
+    "网页内容能进它的上下文，而它能执行命令、写文件，提示注入的后果因此从「读到可疑文字」升级成「执行代码」。",
+    "要收回：把三个 web 工具移回 deny，并把 agent-capabilities.js 里 dev.web 改回 false。",
+    "",
+    "「Bash 里能跑什么命令」不在这里管 —— 那是 hooks/check_security.js 的拒绝清单；这里只管工具级：有没有 Bash、有没有 Web。",
+    "PreToolUse hook 拦的是灾难性误操作（rm -rf / · del /f · format），防手滑，不防敌手。"
+  ],
+  "permissions": {
+    "allow": [
+      "Bash",
+      "Edit",
+      "Write",
+      "Read",
+      "Glob",
+      "Grep",
+      "WebSearch",
+      "WebFetch"
+    ],
+    "deny": []
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|WebSearch|WebFetch|Fetch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node {{ENGLOOP}}/hooks/check_security.js"
+          }
+        ]
+      }
+    ]
+  }
+}

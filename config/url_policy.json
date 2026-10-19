@@ -1,0 +1,44 @@
+{
+  "_note": [
+    "给 hooks/check_security.js 读的网址策略（eval worker 上网时用）。",
+    "能做研究（新闻 / 文档 / 官方产品站 / 研究论文 / 公开数据源）；",
+    "不能访问代码仓库（GitHub / GitLab / BitBucket 等）、包 registry（npm / PyPI 等）、代码问答站（StackOverflow 等）、裸 IP、非 HTTPS。",
+    "",
+    "禁这三类的理由：它们能把外部代码或包带进来（供应链风险）；允许的那些只带来信息。",
+    "「读信息」和「取代码」是两件事，这份策略划的就是这条线。改它之前先问：新加的域名属于哪一边。",
+    "",
+    "缺文件、坏 JSON、缺字段，hooks/check_security.js 都会拒绝，不是跳过 ⇒ 四个字段全部必填，不查也要显式写成 false / 空数组。"
+  ],
+  "require_https": true,
+  "block_raw_ip": true,
+  "blocked_domains": [
+    "github.com",
+    "gitlab.com",
+    "bitbucket.org",
+    "sourceforge.net",
+    "npmjs.com",
+    "npmjs.org",
+    "pypi.org",
+    "rubygems.org",
+    "crates.io",
+    "packagist.org",
+    "stackoverflow.com",
+    "stackexchange.com",
+    "serverfault.com",
+    "superuser.com",
+    "localhost",
+    "metadata.google.internal"
+  ],
+  "blocked_domain_patterns": [
+    "*.github.com",
+    "*.githubusercontent.com",
+    "*.gitlab.com",
+    "*.bitbucket.org",
+    "*.npmjs.com",
+    "*.pypi.org",
+    "*.stackoverflow.com",
+    "*.stackexchange.com",
+    "*.local",
+    "*.internal"
+  ]
+}

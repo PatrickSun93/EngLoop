@@ -1,0 +1,73 @@
+{
+  "rooms": [
+    {
+      "hash": "eng-loop-7f3a9c21d0b4",
+      "name": "eng-loop",
+      "created_at": "@now-3d",
+      "members": [
+        "JARVIS",
+        "dev",
+        "senior"
+      ],
+      "flow": null,
+      "stage": null,
+      "assignee": null,
+      "flow_dir": null,
+      "stage_entered_at": null,
+      "flow_snapshot": null,
+      "message_count": 218,
+      "last_activity_at": "@now-2m"
+    },
+    {
+      "hash": "w1-agy-2b8e61f0a9c3",
+      "name": "w1-agy",
+      "created_at": "@now-3d",
+      "members": [
+        "JARVIS",
+        "dev"
+      ],
+      "flow": null,
+      "stage": null,
+      "assignee": null,
+      "flow_dir": null,
+      "stage_entered_at": null,
+      "flow_snapshot": null,
+      "message_count": 71,
+      "last_activity_at": "@now-15m"
+    },
+    {
+      "hash": "ui-redesign-c41d07e5b2aa",
+      "name": "ui-redesign",
+      "created_at": "@now-3d",
+      "members": [
+        "JARVIS",
+        "senior"
+      ],
+      "flow": null,
+      "stage": null,
+      "assignee": null,
+      "flow_dir": null,
+      "stage_entered_at": null,
+      "flow_snapshot": null,
+      "message_count": 9,
+      "last_activity_at": "@now-20h"
+    },
+    {
+      "hash": "pdp-review-0a1b2c3d4e5f",
+      "name": "pdp-review",
+      "created_at": "@now-3d",
+      "members": [
+        "JARVIS",
+        "senior"
+      ],
+      "flow": null,
+      "stage": null,
+      "assignee": null,
+      "flow_dir": null,
+      "stage_entered_at": null,
+      "flow_snapshot": null,
+      "message_count": 31,
+      "last_activity_at": "@now-15d"
+    }
+  ]
+}

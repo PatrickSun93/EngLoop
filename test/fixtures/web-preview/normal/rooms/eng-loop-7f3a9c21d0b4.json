@@ -1,0 +1,163 @@
+{
+  "hash": "eng-loop-7f3a9c21d0b4",
+  "name": "eng-loop",
+  "members": [
+    "JARVIS",
+    "dev",
+    "senior"
+  ],
+  "count": 200,
+  "messages": [
+    {
+      "id": "1791000001000-0",
+      "from": "Patrick",
+      "text": "上周那个 W0 的收尾还有一条没合，谁记得？",
+      "timestamp": "@now-4d",
+      "sender_type": "human"
+    },
+    {
+      "id": "1791000002000-0",
+      "from": "JARVIS",
+      "text": "在 #w1-agy 里，已经合了。",
+      "timestamp": "@now-4d",
+      "reply_to": "1791000001000-0",
+      "kind": "reply",
+      "sender_type": "agent"
+    },
+    {
+      "id": "1791000003000-0",
+      "from": "Patrick",
+      "text": "W1 不着急。主界面太丑了，能不能整个重新设计一下",
+      "timestamp": "@now-58m",
+      "sender_type": "human"
+    },
+    {
+      "id": "1791000004000-0",
+      "from": "JARVIS",
+      "text": "收到。这次不是换皮：把**舰队**从左栏挪到顶上，成了第一屏；**需要你处理的事**单独拎到右边，不用再从对话里翻。\n改动面：`index.html`、`app.css` 重写，`app.js` 的渲染层要跟着动。任务书在 docs/TASK_UI-redesign.md",
+      "timestamp": "@now-57m",
+      "reply_to": "1791000003000-0",
+      "kind": "reply",
+      "sender_type": "agent"
+    },
+    {
+      "id": "1791000005000-0",
+      "from": "dev",
+      "text": "我这边 W1 的全量还在跑，跑完再接 UI。",
+      "timestamp": "@now-55m",
+      "reply_to": "1791000003000-0",
+      "kind": "reply",
+      "sender_type": "agent"
+    },
+    {
+      "id": "1791000006000-0",
+      "from": "senior",
+      "text": "设计稿里的「约 16:00 恢复」没有数据撑，建议不做。",
+      "timestamp": "@now-54m",
+      "reply_to": "1791000003000-0",
+      "kind": "reply",
+      "sender_type": "agent"
+    },
+    {
+      "id": "1791000007000-0",
+      "from": "dev",
+      "text": "dev 上线 · 自检通过 · 轮询中",
+      "timestamp": "@now-50m",
+      "kind": "status",
+      "sender_type": "agent"
+    },
+    {
+      "id": "1791000008000-0",
+      "from": "senior",
+      "text": "senior 上线 · 自检通过",
+      "timestamp": "@now-49m",
+      "kind": "status",
+      "sender_type": "agent"
+    },
+    {
+      "id": "1791000009000-0",
+      "from": "dev",
+      "text": "心跳 · 队列 0",
+      "timestamp": "@now-48m",
+      "kind": "status",
+      "sender_type": "agent"
+    },
+    {
+      "id": "1791000010000-0",
+      "from": "JARVIS",
+      "text": "【流程】@dev 请开始「W1 合入后全量」阶段",
+      "timestamp": "@now-40m",
+      "kind": "notice",
+      "expects_reply": "true",
+      "sender_type": "agent"
+    },
+    {
+      "id": "1791000011000-0",
+      "from": "dev",
+      "text": "开始了，预计 12 分钟。",
+      "timestamp": "@now-39m",
+      "reply_to": "1791000010000-0",
+      "kind": "reply",
+      "sender_type": "agent"
+    },
+    {
+      "id": "1791000012000-0",
+      "from": "dev",
+      "text": "W1 合入后的全量跑完了，5 条红都在 `bus-restart` 和 `outbox-ack-only`，合并前就红，是环境原因。\n\n```\nnode test/run-all.js\n  通过 3932 · 失败 5\n```",
+      "timestamp": "@now-27m",
+      "reply_to": "1791000010000-0",
+      "kind": "reply",
+      "done": "true",
+      "verify": "pass",
+      "sender_type": "agent"
+    },
+    {
+      "id": "1791000013000-0",
+      "from": "senior",
+      "text": "@Patrick PDP 第 3 步的验收要不要包含 Linux？我倾向包含，但那要多一台机器。",
+      "timestamp": "@now-20m",
+      "kind": "notice",
+      "expects_reply": "true",
+      "sender_type": "agent"
+    },
+    {
+      "id": "1791000014000-0",
+      "from": "dev3",
+      "text": "（这条没标 reply_to 也没标 notice —— 预览里用来看「未归属」长什么样）",
+      "timestamp": "@now-12m",
+      "sender_type": "agent"
+    },
+    {
+      "id": "1791000015000-0",
+      "from": "JARVIS",
+      "text": "watchdog：dev3 失联（会话在、花名册里没有）",
+      "timestamp": "@now-9m",
+      "kind": "notice",
+      "sender_type": "agent"
+    },
+    {
+      "id": "1791000016000-0",
+      "from": "JARVIS",
+      "text": "watchdog：dev3 失联（会话在、花名册里没有）",
+      "timestamp": "@now-6m",
+      "kind": "notice",
+      "sender_type": "agent"
+    },
+    {
+      "id": "1791000017000-0",
+      "from": "JARVIS",
+      "text": "watchdog：dev3 失联（会话在、花名册里没有）",
+      "timestamp": "@now-3m",
+      "kind": "notice",
+      "sender_type": "agent"
+    },
+    {
+      "id": "1791000018000-0",
+      "from": "Patrick",
+      "text": "先做对话视图，今天和泳道后面再说。",
+      "timestamp": "@now-2m",
+      "sender_type": "human"
+    }
+  ],
+  "merges": {}
+}

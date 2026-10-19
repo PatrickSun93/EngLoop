@@ -1,0 +1,28 @@
+{
+  "hash": "ui-redesign-c41d07e5b2aa",
+  "name": "ui-redesign",
+  "members": [
+    "JARVIS",
+    "senior"
+  ],
+  "count": 200,
+  "messages": [
+    {
+      "id": "1791000021000-0",
+      "from": "Patrick",
+      "text": "这个UI有点太丑了",
+      "timestamp": "@now-21h",
+      "sender_type": "human"
+    },
+    {
+      "id": "1791000022000-0",
+      "from": "JARVIS",
+      "text": "三个方向的设计稿在画布上：今天 · 对话 · 泳道。",
+      "timestamp": "@now-20h",
+      "reply_to": "1791000021000-0",
+      "kind": "reply",
+      "sender_type": "agent"
+    }
+  ],
+  "merges": {}
+}

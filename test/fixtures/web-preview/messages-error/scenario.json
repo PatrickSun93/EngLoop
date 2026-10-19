@@ -1,0 +1,7 @@
+{
+  "description": "dev 的 /api/messages 返回 503（PARTIAL_UNAVAILABLE：有一条流查不了；其余端点同 normal）—— 看泳道那一列写「查不了」、其余列正常",
+  "extends": "normal",
+  "status": {
+    "messages/dev.json": 503
+  }
+}

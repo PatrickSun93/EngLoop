@@ -1,0 +1,7 @@
+{
+  "path": "docs/TASK_UI-redesign.md",
+  "size": 9123,
+  "mtime": "@now-1d",
+  "title": "任务 UI：控制台重做成三个视图（今天 · 对话 · 泳道）",
+  "content": "# 任务 UI：控制台重做成三个视图（今天 · 对话 · 泳道）\n\n（预览夹具里的示例文档）\n\n| 设计稿里的 | 数据来源 | 没有数据时 |\n|---|---|---|\n| 「排队 2」「处理中」 | `/api/queue/items` | `队列 ?` |\n| 心跳曲线 | 前端环形缓冲 | 「采样中」 |\n\n```\nnpm run preview\n```\n"
+}

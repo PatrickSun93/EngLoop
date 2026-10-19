@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EngLoop 任务图</title>
+<link rel="stylesheet" href="/app.css">
+<!-- 任务图：只列图和节点状态，不画图。
+     数据全走 /api/graphs（鉴权闸门之后）；401 ⇒ auth.js 弹登录框。 -->
+<style>
+  body{background:var(--bg);color:var(--ink);font:14px var(--sans);margin:0;padding:16px}
+  .g{background:var(--panel);border-radius:8px;padding:12px 16px;margin:0 0 14px}
+  .g h2{font-size:15px;margin:0 0 4px}
+  .meta{color:var(--ink-3);font-size:12px;margin-bottom:8px}
+  table{border-collapse:collapse;width:100%;font-size:13px}
+  td,th{text-align:left;padding:3px 8px;border-top:1px solid var(--sunk);vertical-align:top}
+  .why{color:var(--ink-2)} .hold{color:var(--ink-3)}
+  .st-verified{color:#2d7a46} .st-failed,.st-blocked{color:#a8412c;font-weight:600}
+  .st-dispatched,.st-produced{color:#2b5fa8}
+  button{margin-left:8px}
+  .err{color:#a8412c}
+</style>
+</head>
+<body>
+<div><a href="/">← 控制台</a> · <b>任务图</b> <span id="err" class="err"></span></div>
+<div id="list" style="margin-top:12px">加载中…</div>
+<script src="/auth.js"></script>
+<script src="/graphs.js"></script>
+</body>
+</html>

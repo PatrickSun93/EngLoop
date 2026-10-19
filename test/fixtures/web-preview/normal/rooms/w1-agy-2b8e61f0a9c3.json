@@ -1,0 +1,105 @@
+{
+  "hash": "w1-agy-2b8e61f0a9c3",
+  "name": "w1-agy",
+  "members": [
+    "JARVIS",
+    "dev"
+  ],
+  "count": 200,
+  "messages": [
+    {
+      "id": "1790999990000-0",
+      "from": "dev",
+      "text": "W0 收尾：outbox ack 那条改完了（超过 24 小时 —— 「刚完成」里不该出现）",
+      "timestamp": "@now-26h",
+      "kind": "notice",
+      "done": "true",
+      "verify": "none",
+      "sender_type": "agent"
+    },
+    {
+      "id": "1791000019000-0",
+      "from": "JARVIS",
+      "text": "W1 返工 1：真 agy 超时被判成功（4 次 3 次）。@dev 修一下判据。",
+      "timestamp": "@now-5h",
+      "kind": "notice",
+      "sender_type": "agent"
+    },
+    {
+      "id": "1791000020000-0",
+      "from": "dev",
+      "text": "修了：后台任务被杀判超时。Mac 上 54·6。",
+      "timestamp": "@now-3h",
+      "reply_to": "1791000019000-0",
+      "kind": "reply",
+      "done": "true",
+      "verify": "none",
+      "sender_type": "agent"
+    },
+    {
+      "id": "1791000020500-0",
+      "from": "dev",
+      "text": "**W1 返工 2**：agy 超时判据改成看退出码。\n\n证据在 evidence 里。",
+      "timestamp": "@now-2h",
+      "kind": "notice",
+      "done": "true",
+      "verify": "pending",
+      "sender_type": "agent"
+    },
+    {
+      "id": "1791000021000-0",
+      "from": "dev",
+      "text": "W1 mutate-agy 跑完：变异全部被杀",
+      "timestamp": "@now-70m",
+      "kind": "notice",
+      "done": "true",
+      "verify": "pending",
+      "sender_type": "agent"
+    },
+    {
+      "id": "1791000021500-0",
+      "from": "dev",
+      "text": "`lib/agy.js` 超时路径补了测试，全量过",
+      "timestamp": "@now-50m",
+      "kind": "notice",
+      "done": "true",
+      "verify": "pending",
+      "sender_type": "agent"
+    },
+    {
+      "id": "1791000022000-0",
+      "from": "dev",
+      "text": "✅ 独立核验通过 —— dev 的完成报告（房间 w1-agy-2b8e61f0a9c3 · thread 1791000021500-0）\n通过 3932 · 失败 5（与基线相同）",
+      "timestamp": "@now-45m",
+      "reply_to": "1791000021500-0",
+      "kind": "notice",
+      "done": "true",
+      "verify": "pass",
+      "expects_reply": "false",
+      "sender_type": "system"
+    },
+    {
+      "id": "1791000022500-0",
+      "from": "dev",
+      "text": "W1 文档补完：docs/TASK_W1.md 的验收段",
+      "timestamp": "@now-25m",
+      "kind": "notice",
+      "done": "true",
+      "verify": "pending",
+      "sender_type": "agent"
+    },
+    {
+      "id": "1791000023000-0",
+      "from": "dev",
+      "text": "⚪ 未验证（核验做不了） —— dev 的完成报告（房间 w1-agy-2b8e61f0a9c3 · thread 1790990000000-0）\nevidence 里的命令在这台机器上跑不了",
+      "timestamp": "@now-15m",
+      "reply_to": "1790990000000-0",
+      "kind": "notice",
+      "done": "true",
+      "verify": "unverifiable",
+      "expects_reply": "false",
+      "sender_type": "system"
+    }
+  ],
+  "merges": {}
+}

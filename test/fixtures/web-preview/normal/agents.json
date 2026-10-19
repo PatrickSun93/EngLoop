@@ -1,0 +1,115 @@
+{
+  "at": "@now|ms",
+  "sessions_seen": 6,
+  "deaf": [
+    {
+      "name": "dev3",
+      "type": "dev",
+      "tmux_session": "engloop_dev3",
+      "level": "deaf",
+      "idle_ms": 248000,
+      "outbox_idle_ms": 251000,
+      "declared_busy": false,
+      "busy_reason": null,
+      "busy_what": null,
+      "pending": 0,
+      "ttl_s": null,
+      "since_heartbeat_ms": null
+    }
+  ],
+  "stale": [],
+  "rate_limited": [
+    {
+      "name": "dev2",
+      "type": "dev",
+      "tmux_session": "engloop_dev2",
+      "level": "rate_limited",
+      "idle_ms": 1260000,
+      "outbox_idle_ms": 1255000,
+      "declared_busy": false,
+      "busy_reason": null,
+      "busy_what": null,
+      "pending": 0,
+      "ttl_s": 540,
+      "since_heartbeat_ms": 12000
+    }
+  ],
+  "orphan_pel": [],
+  "live": [
+    {
+      "name": "JARVIS",
+      "type": "orchestrator",
+      "tmux_session": "engloop_orch",
+      "level": "ok",
+      "idle_ms": 4000,
+      "outbox_idle_ms": 9000,
+      "declared_busy": false,
+      "busy_reason": null,
+      "busy_what": null,
+      "pending": 0,
+      "ttl_s": 540,
+      "since_heartbeat_ms": 12000
+    },
+    {
+      "name": "dev",
+      "type": "dev",
+      "tmux_session": "engloop_dev",
+      "level": "ok",
+      "idle_ms": 12000,
+      "outbox_idle_ms": 3000,
+      "declared_busy": true,
+      "busy_reason": null,
+      "busy_what": "test/run-all.js（112 个文件）",
+      "pending": 0,
+      "ttl_s": 540,
+      "since_heartbeat_ms": 12000
+    },
+    {
+      "name": "senior",
+      "type": "senior",
+      "tmux_session": "engloop_senior",
+      "level": "warn",
+      "idle_ms": 960000,
+      "outbox_idle_ms": 940000,
+      "declared_busy": false,
+      "busy_reason": null,
+      "busy_what": null,
+      "pending": 0,
+      "ttl_s": 540,
+      "since_heartbeat_ms": 12000
+    },
+    {
+      "name": "qa",
+      "type": "qa",
+      "tmux_session": "engloop_qa",
+      "level": "unknown",
+      "idle_ms": null,
+      "outbox_idle_ms": null,
+      "declared_busy": false,
+      "busy_reason": null,
+      "busy_what": null,
+      "pending": 0,
+      "ttl_s": 540,
+      "since_heartbeat_ms": 30000
+    }
+  ],
+  "offline_candidates": [
+    {
+      "name": "designer",
+      "type": "design",
+      "type_source": "claude-md-heading",
+      "cwd": "agents/designer",
+      "source": "agents-dir"
+    }
+  ],
+  "offline_source": "agents-dir",
+  "launching": {},
+  "dropouts": [
+    {
+      "name": "JARVIS",
+      "type": "orchestrator",
+      "detected_at": "@now-5h|ms",
+      "note": "这是发现时刻，不是掉出去的时刻"
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "_note": [
+    "review worker 的权限，跟 lib/agent-capabilities.js 里 review 那行一致：",
+    "web / bash / write 全没有，唯一的纯读者。",
+    "",
+    "不该有的工具**显式 deny**，不靠「不在 allow 里」：deny 是显式的拒绝声明，在任何一层都生效。",
+    "跟 eval 的差别只在 allow：eval 是 [WebSearch, WebFetch]（能上网、不读盘），",
+    "review 是 [Read, Glob, Grep]（读盘、不上网）。两者互斥是故意的：断开「不可信输入 → 本地能力」这条链路。"
+  ],
+  "_⚠️_这份文件里的_allow_很可能不生效": [
+    "⚠️ 这份文件不是防线：agent / worker 起 claude 时带 `--setting-sources user`，cwd 里的这份**不加载**。",
+    "   真正生效的权限是 lib/agent-settings.js 按 lib/agent-capabilities.js 生成、用 `--settings` 注入的那份",
+    "   （PreToolUse hook 也由它用绝对路径重新给）。这份是能力表的**意图声明**，test/templates.test.js 守着两边一致。",
+    "⇒ 往这里加一条禁令，不等于那个工具真被禁了；要改权限，改能力表。"
+  ],
+  "permissions": {
+    "allow": [
+      "Read",
+      "Glob",
+      "Grep"
+    ],
+    "_allow_里没有_Task_而它并没有因此被禁": [
+      "Task 不在 allow 里，但**从 allow 里去掉一个工具不构成禁止它**。",
+      "要真禁 Task 得改能力表（lib/agent-capabilities.js 的 disallowedToolsFor）；在那之前，别把这份 allow 读成「Task 已经禁了」。"
+    ],
+    "_deny_里为什么有三个_web_工具": [
+      "review 是 web:false（eval 才是 web:true）⇒ 三个 web 工具也要显式 deny。",
+      "别拿一个类型的配置去推另一个类型：eval 只是能力表里的一个点，不是 worker 的通用形状。"
+    ],
+    "deny": [
+      "Bash",
+      "Write",
+      "Edit",
+      "NotebookEdit",
+      "WebSearch",
+      "WebFetch",
+      "Fetch"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|WebSearch|WebFetch|Fetch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node {{ENGLOOP}}/hooks/check_security.js"
+          }
+        ]
+      }
+    ]
+  }
+}

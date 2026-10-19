@@ -1,0 +1,38 @@
+{
+  "description": "arch 设计 → senior 写 spec/ADR → arch review → senior 写 dev list → test。",
+  "stages": [
+    {
+      "name": "design",
+      "role": "arch",
+      "produces": "DESIGN.md",
+      "requires": ["## 问题", "## 方案", "## 取舍"]
+    },
+    {
+      "name": "spec",
+      "role": "senior",
+      "produces": "SPEC.md",
+      "requires": ["## 范围", "## 验收判据"]
+    },
+    {
+      "name": "review",
+      "role": "arch",
+      "produces": "REVIEW.md",
+      "requires": ["## 判决"],
+      "verdict": ["通过", "打回"]
+    },
+    {
+      "name": "tasks",
+      "role": "senior",
+      "produces": "TASKS.md",
+      "requires": ["## 任务清单"]
+    },
+    {
+      "name": "test",
+      "role": "test",
+      "produces": "TEST_REPORT.md",
+      "requires": ["## 结论"]
+    }
+  ],
+  "on_reject": "spec",
+  "reject_verdict": "打回"
+}

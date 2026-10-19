@@ -1,0 +1,43 @@
+{
+  "_note": [
+    "test worker 的权限，跟 lib/agent-capabilities.js 里 test 那行一致：无 web、有 bash。",
+    "⚠️ 这份文件不是防线：agent / worker 起 claude 时带 `--setting-sources user`，cwd 里的这份**不加载**。",
+    "   真正生效的权限是 lib/agent-settings.js 按 lib/agent-capabilities.js 生成、用 `--settings` 注入的那份",
+    "   （PreToolUse hook 也由它用绝对路径重新给）。这份是能力表的**意图声明**，test/templates.test.js 守着两边一致。",
+    "",
+    "不该有的工具**显式 deny**，不靠「不在 allow 里」：deny 是显式的拒绝声明，在任何一层都生效。",
+    "deny 了 Write / Edit / NotebookEdit：test 的交付是诊断，不是补丁 ——",
+    "刚改过代码的 agent 报告的测试结果，说不清是原状还是它改出来的。",
+    "",
+    "「Bash 里能跑什么命令」不在这里管 —— 那是 hooks/check_security.js 的拒绝清单；这里只管工具级：有没有 Bash、有没有 Web。"
+  ],
+  "permissions": {
+    "allow": [
+      "Bash",
+      "Read",
+      "Glob",
+      "Grep"
+    ],
+    "deny": [
+      "WebSearch",
+      "WebFetch",
+      "Fetch",
+      "Write",
+      "Edit",
+      "NotebookEdit"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|WebSearch|WebFetch|Fetch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node {{ENGLOOP}}/hooks/check_security.js"
+          }
+        ]
+      }
+    ]
+  }
+}

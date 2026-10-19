@@ -1,0 +1,6 @@
+{
+  "error": "PARTIAL_UNAVAILABLE",
+  "message": "查不了 1/2 条流：orch:in:agent(Connection is closed.) —— 不返回部分结果：缺一半的历史会长得像「它没发过消息」，而那正好是单向失聪的样子。",
+  "detail": "这不是「没有消息」，是「有一部分查不了」——返回部分结果会让一次事故复盘得出相反的结论。",
+  "next": "**先别拿这次的结果下任何结论。** 上面点名的那条流恢复后重查一次；现在就要看的话，GET /health 能看 redis 死活，而 GET /api/agents 能看这个 agent 当前在不在线（那是另一个信号源）。"
+}

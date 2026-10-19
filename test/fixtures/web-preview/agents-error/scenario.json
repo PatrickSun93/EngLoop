@@ -1,0 +1,7 @@
+{
+  "description": "/api/agents 返回 500（其余端点同 normal）",
+  "extends": "normal",
+  "status": {
+    "agents.json": 500
+  }
+}

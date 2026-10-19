@@ -1,0 +1,363 @@
+{
+ "_provenance": {
+  "what": "合成样本：temp/probe-state-*.json 的结构快照（测试往生产写探针状态时留下的那种形状）。字段取自一份真实快照，叙述性的说明都拿掉了；元凶（culprit）只保留指向公开版里也存在的测试文件的那两条，另一条记成未确认（分类按 classification_rule 重算）。",
+  "taken_at": "2026-08-22T12:59:13.967+00:00",
+  "totals": {
+   "files": 12,
+   "pending_total": 42
+  },
+  "classification_rule": {
+   "order": "按下面的顺序求值，第一个命中的胜出（顺序不能换 —— JARVIS 那条同时满足前两条）",
+   "rules": [
+    {
+     "when": "culprit != null 且 pending_count > 0",
+     "label": "测试污染（元凶已确认）"
+    },
+    {
+     "when": "pending_count > 0 且 in_tmux == false",
+     "label": "测试污染（元凶未确认）"
+    },
+    {
+     "when": "in_tmux == true",
+     "label": "真 agent"
+    },
+    {
+     "when": "以上都不是",
+     "label": "历史 agent / 临时 agent（pending 0，无害）"
+    }
+   ]
+  }
+ },
+ "entries": {
+  "JARVIS": {
+   "file": "temp/probe-state-JARVIS.json",
+   "mtime": "2026-08-22T12:45:52.818+00:00",
+   "bytes": 164,
+   "pending_count": 1,
+   "last_sent_ms": 1787402538118,
+   "last_returned_ms": 1787402752817,
+   "in_roster": true,
+   "in_tmux": true,
+   "pending": [
+    {
+     "id": "1787400351554",
+     "sent_ms": 1787400351554
+    }
+   ],
+   "culprit": "test/e2e.test.js:223",
+   "classification": "测试污染（元凶已确认）"
+  },
+  "Oldcrew": {
+   "file": "temp/probe-state-Oldcrew.json",
+   "mtime": "2026-08-20T21:29:29.106+00:00",
+   "bytes": 89,
+   "pending_count": 0,
+   "last_sent_ms": 1787261268261,
+   "last_returned_ms": 1787261369106,
+   "in_roster": false,
+   "in_tmux": false,
+   "pending": [],
+   "culprit": null,
+   "classification": "历史 agent / 临时 agent（pending 0，无害）"
+  },
+  "__layering_probe": {
+   "file": "temp/probe-state-__layering_probe.json",
+   "mtime": "2026-08-22T12:06:04.066+00:00",
+   "bytes": 748,
+   "pending_count": 9,
+   "last_sent_ms": 1787400364065,
+   "last_returned_ms": 1787358431897,
+   "in_roster": false,
+   "in_tmux": false,
+   "pending": [
+    {
+     "id": "1787363577702",
+     "sent_ms": 1787363577702
+    },
+    {
+     "id": "1787367677228",
+     "sent_ms": 1787367677228
+    },
+    {
+     "id": "1787371534629",
+     "sent_ms": 1787371534629
+    },
+    {
+     "id": "1787375356121",
+     "sent_ms": 1787375356121
+    },
+    {
+     "id": "1787379094707",
+     "sent_ms": 1787379094707
+    },
+    {
+     "id": "1787383246249",
+     "sent_ms": 1787383246249
+    },
+    {
+     "id": "1787388447513",
+     "sent_ms": 1787388447513
+    },
+    {
+     "id": "1787392132191",
+     "sent_ms": 1787392132191
+    },
+    {
+     "id": "1787400364065",
+     "sent_ms": 1787400364065
+    }
+   ],
+   "culprit": null,
+   "classification": "测试污染（元凶未确认）"
+  },
+  "cwdprobe": {
+   "file": "temp/probe-state-cwdprobe.json",
+   "mtime": "2026-08-22T02:31:38.246+00:00",
+   "bytes": 155,
+   "pending_count": 1,
+   "last_sent_ms": 1787365898245,
+   "last_returned_ms": null,
+   "in_roster": false,
+   "in_tmux": false,
+   "pending": [
+    {
+     "id": "1787365898245",
+     "sent_ms": 1787365898245
+    }
+   ],
+   "culprit": null,
+   "classification": "测试污染（元凶未确认）"
+  },
+  "d5probe": {
+   "file": "temp/probe-state-d5probe.json",
+   "mtime": "2026-08-21T17:32:16.582+00:00",
+   "bytes": 155,
+   "pending_count": 1,
+   "last_sent_ms": 1787333536582,
+   "last_returned_ms": null,
+   "in_roster": false,
+   "in_tmux": false,
+   "pending": [
+    {
+     "id": "1787333536582",
+     "sent_ms": 1787333536582
+    }
+   ],
+   "culprit": null,
+   "classification": "测试污染（元凶未确认）"
+  },
+  "dev": {
+   "file": "temp/probe-state-dev.json",
+   "mtime": "2026-08-22T12:02:53.713+00:00",
+   "bytes": 89,
+   "pending_count": 0,
+   "last_sent_ms": 1787400037551,
+   "last_returned_ms": 1787400173713,
+   "in_roster": true,
+   "in_tmux": true,
+   "pending": [],
+   "culprit": null,
+   "classification": "真 agent"
+  },
+  "dev2": {
+   "file": "temp/probe-state-dev2.json",
+   "mtime": "2026-08-15T04:40:10.973+00:00",
+   "bytes": 89,
+   "pending_count": 0,
+   "last_sent_ms": 1786768805189,
+   "last_returned_ms": 1786768810973,
+   "in_roster": false,
+   "in_tmux": false,
+   "pending": [],
+   "culprit": null,
+   "classification": "历史 agent / 临时 agent（pending 0，无害）"
+  },
+  "devtmp1": {
+   "file": "temp/probe-state-devtmp1.json",
+   "mtime": "2026-08-21T18:01:22.653+00:00",
+   "bytes": 89,
+   "pending_count": 0,
+   "last_sent_ms": 1787334314772,
+   "last_returned_ms": 1787335282652,
+   "in_roster": false,
+   "in_tmux": false,
+   "pending": [],
+   "culprit": null,
+   "classification": "历史 agent / 临时 agent（pending 0，无害）"
+  },
+  "oldcrew": {
+   "file": "temp/probe-state-oldcrew.json",
+   "mtime": "2026-08-20T21:29:51.132+00:00",
+   "bytes": 89,
+   "pending_count": 0,
+   "last_sent_ms": 1787261264699,
+   "last_returned_ms": 1787261391132,
+   "in_roster": false,
+   "in_tmux": false,
+   "pending": [],
+   "culprit": null,
+   "classification": "历史 agent / 临时 agent（pending 0，无害）"
+  },
+  "probe": {
+   "file": "temp/probe-state-probe.json",
+   "mtime": "2026-08-21T17:31:21.994+00:00",
+   "bytes": 155,
+   "pending_count": 1,
+   "last_sent_ms": 1787333481994,
+   "last_returned_ms": null,
+   "in_roster": false,
+   "in_tmux": false,
+   "pending": [
+    {
+     "id": "1787333481994",
+     "sent_ms": 1787333481994
+    }
+   ],
+   "culprit": null,
+   "classification": "测试污染（元凶未确认）"
+  },
+  "senior": {
+   "file": "temp/probe-state-senior.json",
+   "mtime": "2026-08-22T12:02:19.801+00:00",
+   "bytes": 89,
+   "pending_count": 0,
+   "last_sent_ms": 1787400044160,
+   "last_returned_ms": 1787400139801,
+   "in_roster": true,
+   "in_tmux": true,
+   "pending": [],
+   "culprit": null,
+   "classification": "真 agent"
+  },
+  "wiringtestcrew": {
+   "file": "temp/probe-state-wiringtestcrew.json",
+   "mtime": "2026-08-22T12:06:29.805+00:00",
+   "bytes": 2199,
+   "pending_count": 29,
+   "last_sent_ms": 1787400389802,
+   "last_returned_ms": null,
+   "in_roster": false,
+   "in_tmux": false,
+   "pending": [
+    {
+     "id": "1786422999319",
+     "sent_ms": 1786422999319
+    },
+    {
+     "id": "1786428519550",
+     "sent_ms": 1786428519550
+    },
+    {
+     "id": "1786747501112",
+     "sent_ms": 1786747501112
+    },
+    {
+     "id": "1786751633720",
+     "sent_ms": 1786751633720
+    },
+    {
+     "id": "1787209117399",
+     "sent_ms": 1787209117399
+    },
+    {
+     "id": "1787248532768",
+     "sent_ms": 1787248532768
+    },
+    {
+     "id": "1787252157462",
+     "sent_ms": 1787252157462
+    },
+    {
+     "id": "1787256255411",
+     "sent_ms": 1787256255411
+    },
+    {
+     "id": "1787260888640",
+     "sent_ms": 1787260888640
+    },
+    {
+     "id": "1787265362305",
+     "sent_ms": 1787265362305
+    },
+    {
+     "id": "1787269916876",
+     "sent_ms": 1787269916876
+    },
+    {
+     "id": "1787287043977",
+     "sent_ms": 1787287043977
+    },
+    {
+     "id": "1787292431670",
+     "sent_ms": 1787292431670
+    },
+    {
+     "id": "1787296504303",
+     "sent_ms": 1787296504303
+    },
+    {
+     "id": "1787332390109",
+     "sent_ms": 1787332390109
+    },
+    {
+     "id": "1787336505093",
+     "sent_ms": 1787336505093
+    },
+    {
+     "id": "1787346280218",
+     "sent_ms": 1787346280218
+    },
+    {
+     "id": "1787350238611",
+     "sent_ms": 1787350238611
+    },
+    {
+     "id": "1787356698351",
+     "sent_ms": 1787356698351
+    },
+    {
+     "id": "1787363603338",
+     "sent_ms": 1787363603338
+    },
+    {
+     "id": "1787367702856",
+     "sent_ms": 1787367702856
+    },
+    {
+     "id": "1787371560070",
+     "sent_ms": 1787371560070
+    },
+    {
+     "id": "1787375381667",
+     "sent_ms": 1787375381667
+    },
+    {
+     "id": "1787379121521",
+     "sent_ms": 1787379121521
+    },
+    {
+     "id": "1787383271912",
+     "sent_ms": 1787383271912
+    },
+    {
+     "id": "1787388473338",
+     "sent_ms": 1787388473338
+    },
+    {
+     "id": "1787392157897",
+     "sent_ms": 1787392157897
+    },
+    {
+     "id": "1787395767574",
+     "sent_ms": 1787395767574
+    },
+    {
+     "id": "1787400389802",
+     "sent_ms": 1787400389802
+    }
+   ],
+   "culprit": "test/wiring.test.js",
+   "classification": "测试污染（元凶已确认）"
+  }
+ }
+}

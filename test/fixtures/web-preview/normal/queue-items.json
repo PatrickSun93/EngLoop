@@ -1,0 +1,71 @@
+{
+  "groups": [
+    {
+      "recipient": "dev",
+      "queued": 2,
+      "in_flight": 1,
+      "streams": [
+        "agent:dev:in"
+      ],
+      "errors": [],
+      "items": [
+        {
+          "id": "@now-14m-0",
+          "from": "JARVIS",
+          "to": "dev",
+          "text": "W1 合入后跑一遍全量，结果贴进 #eng-loop，红的逐条说是不是环境原因",
+          "job_id": "j-dev-1",
+          "timestamp": "@now-14m",
+          "state": "in_flight",
+          "stream": "agent:dev:in",
+          "group": "agent:dev"
+        },
+        {
+          "id": "@now-9m-0",
+          "from": "JARVIS",
+          "to": "dev",
+          "text": "跑完之后看一眼 mutate-agy 的结果",
+          "job_id": "j-dev-2",
+          "timestamp": "@now-9m",
+          "state": "queued",
+          "stream": "agent:dev:in",
+          "group": "agent:dev"
+        },
+        {
+          "id": "@now-6m-0",
+          "from": "senior",
+          "to": "dev",
+          "text": "PDP 第 3 步的验收脚本里加一条 Linux 路径",
+          "job_id": "j-dev-3",
+          "timestamp": "@now-6m",
+          "state": "queued",
+          "stream": "agent:dev:in",
+          "group": "agent:dev"
+        }
+      ]
+    },
+    {
+      "recipient": "JARVIS",
+      "queued": 1,
+      "in_flight": 0,
+      "streams": [
+        "orch:in:human",
+        "orch:in:agent"
+      ],
+      "errors": [],
+      "items": [
+        {
+          "id": "@now-1m-0",
+          "from": "Patrick",
+          "to": "orchestrator",
+          "text": "设计稿看完了，三个都要。先做对话视图。",
+          "job_id": "j-pat-3",
+          "timestamp": "@now-1m",
+          "state": "queued",
+          "stream": "orch:in:human",
+          "group": "orch"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,145 @@
+{
+  "tiers": {
+    "A": {
+      "effect": "none",
+      "desc": "表态型 —— 不触发任何动作"
+    },
+    "B": {
+      "effect": "immediate",
+      "desc": "动作型 —— 一点就执行，动作只增不减"
+    },
+    "C": {
+      "effect": "confirm",
+      "desc": "破坏性 —— 只产生待确认动作，确认了才执行"
+    }
+  },
+  "emojis": [
+    {
+      "emoji": "👍",
+      "known": true,
+      "tier": "A",
+      "action": null,
+      "effect": "none",
+      "costs_quota": false,
+      "label": "认可",
+      "hint": "只计数、只显示，不触发任何动作。"
+    },
+    {
+      "emoji": "👀",
+      "known": true,
+      "tier": "A",
+      "action": null,
+      "effect": "none",
+      "costs_quota": false,
+      "label": "我看到了",
+      "hint": "「已读但还没回」这个状态本来在界面上不可见 —— 这个 emoji 就是让它可见。"
+    },
+    {
+      "emoji": "🔥",
+      "known": true,
+      "tier": "A",
+      "action": null,
+      "effect": "none",
+      "costs_quota": false,
+      "label": "这条重要",
+      "hint": "只是标记，不改任何优先级 —— 改了就不是 A 档了。"
+    },
+    {
+      "emoji": "🏁",
+      "known": true,
+      "tier": "A",
+      "action": null,
+      "effect": "none",
+      "costs_quota": false,
+      "label": "任务完成",
+      "hint": "agent 报完成时系统自动打在 thread 根上（by: system）。纯标记，不触发动作 —— 验收请点 ✅。"
+    },
+    {
+      "emoji": "⏳",
+      "known": true,
+      "tier": "A",
+      "action": null,
+      "effect": "none",
+      "costs_quota": false,
+      "label": "核验中",
+      "hint": "agent 报了完成、带了 evidence，独立核验正在跑（by: system）。核完换成 🏁 或 🔙。"
+    },
+    {
+      "emoji": "🔙",
+      "known": true,
+      "tier": "A",
+      "action": null,
+      "effect": "none",
+      "costs_quota": false,
+      "label": "核验没过 · 已打回",
+      "hint": "独立核验没过，系统已经把没过的项打回给那个 agent（by: system）。同一件活第 3 次没过会转给编排者。"
+    },
+    {
+      "emoji": "✅",
+      "known": true,
+      "tier": "B",
+      "action": "mark_verified",
+      "effect": "immediate",
+      "costs_quota": false,
+      "label": "验收通过",
+      "hint": "给这条打「已验收」标记并回执给发送者。只加标记，不删不改任何东西。"
+    },
+    {
+      "emoji": "📌",
+      "known": true,
+      "tier": "B",
+      "action": "pin_to_summary",
+      "effect": "immediate",
+      "costs_quota": false,
+      "label": "记进会话摘要",
+      "hint": "把这条追加进那个 agent 的会话摘要。纯追加。"
+    },
+    {
+      "emoji": "❓",
+      "known": true,
+      "tier": "B",
+      "action": "explain",
+      "effect": "immediate",
+      "costs_quota": true,
+      "label": "展开解释",
+      "hint": "让发这条的 agent 展开解释一次。⚠️ 会触发一次 agent 调用（花额度）。"
+    },
+    {
+      "emoji": "❌",
+      "known": true,
+      "tier": "C",
+      "action": "undo",
+      "effect": "confirm",
+      "costs_quota": false,
+      "label": "撤销 / 否决",
+      "hint": "撤销这条对应的动作。撤销本身可能不可逆 —— 所以要确认。"
+    },
+    {
+      "emoji": "🛑",
+      "known": true,
+      "tier": "C",
+      "action": "stop_agent",
+      "effect": "confirm",
+      "costs_quota": false,
+      "label": "让它停下",
+      "hint": "停掉那个 agent。它手上的上下文会一起丢掉 —— 所以要确认。"
+    },
+    {
+      "emoji": "🔁",
+      "known": true,
+      "tier": "C",
+      "action": "rerun",
+      "effect": "confirm",
+      "costs_quota": true,
+      "label": "重跑",
+      "hint": "重跑这个任务。⚠️ 消耗额度，而且可能覆盖已有产物 —— 所以要确认。"
+    }
+  ],
+  "tier_rules": [
+    "① 产物是追加的、可撤的、看得见的",
+    "② 不消耗额度 —— 或者消耗了就明写（costs_quota）",
+    "③ 误点的代价 ≤ 多一条消息"
+  ],
+  "confirm_ui": "button",
+  "confirm_note": "C 档的确认用界面按钮，**不用 emoji** —— emoji 之所以需要两段式，前提就是它是个极易误点的通道；拿同一个易误点的通道去确认它自己，两道关会被同时误点，那不是两段，是一段点了两次。"
+}

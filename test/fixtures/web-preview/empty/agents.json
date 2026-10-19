@@ -1,0 +1,28 @@
+{
+  "at": "@now|ms",
+  "sessions_seen": 1,
+  "deaf": [],
+  "stale": [],
+  "rate_limited": [],
+  "orphan_pel": [],
+  "live": [
+    {
+      "name": "JARVIS",
+      "type": "orchestrator",
+      "tmux_session": "engloop_orch",
+      "level": "ok",
+      "idle_ms": 3000,
+      "outbox_idle_ms": 20000,
+      "declared_busy": false,
+      "busy_reason": null,
+      "busy_what": null,
+      "pending": 0,
+      "ttl_s": 540,
+      "since_heartbeat_ms": 12000
+    }
+  ],
+  "offline_candidates": [],
+  "offline_source": "agents-dir",
+  "launching": {},
+  "dropouts": []
+}

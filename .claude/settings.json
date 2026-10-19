@@ -1,0 +1,20 @@
+{
+  "_note": [
+    "编排者（JARVIS，工作目录 = 仓库主检出根）的配置。",
+    "如果你在这里看到 permissions/deny 或 PreToolUse —— 那不是这份配置该有的，是别的模板被写进了仓库根。",
+    "SessionStart(compact) 先跑 bin/compact-carry.js（压缩后补回最近的要求）；它起不来才退回 cat 提示文件，再退回 echo。"
+  ],
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR\"/bin/compact-carry.js || cat \"$CLAUDE_PROJECT_DIR\"/.claude/compaction-notice.txt || echo 'COMPACTION OVERRIDE (fallback): 立刻前台运行 ENGLOOP_AGENT_TYPE=orchestrator node bin/next.js（Bash timeout 600000），poller 不能停；然后重读 CLAUDE.md 与 protocols/。'"
+          }
+        ]
+      }
+    ]
+  }
+}

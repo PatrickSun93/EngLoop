@@ -1,0 +1,51 @@
+{
+  "description": "最短链 + survey：dev 先普查 → senior 拆任务 → dev 实现 → senior 验收，不合格打回给 dev。survey 排第一：普查产生的事实要先于规格到达；新阶段只往下标 0 插，正在跑的房间 (cur, nxt) 才不会被静默改道（rooms.stageDrift() 检出这一类）。打回目标是 dev 而不是 tasks：不合格的通常是实现，不是清单。review 阶段显式写 verdict_in:'## 判决'，别删它：默认从 requires[0]（## 逐条对账）读判决词，而那一节天生会写到「打回」二字。",
+  "stages": [
+    {
+      "name": "survey",
+      "role": "dev",
+      "produces": "SURVEY.md",
+      "requires": [
+        "## 我数了什么",
+        "## 数出来是多少",
+        "## 这推翻了什么假设",
+        "## 我没查的"
+      ]
+    },
+    {
+      "name": "tasks",
+      "role": "senior",
+      "produces": "TASKS.md",
+      "requires": [
+        "## 我的理解",
+        "## 任务清单",
+        "## 验收判据"
+      ]
+    },
+    {
+      "name": "dev",
+      "role": "dev",
+      "produces": "DEV_REPORT.md",
+      "requires": [
+        "## 改了什么",
+        "## 验了什么在哪验的"
+      ]
+    },
+    {
+      "name": "review",
+      "role": "senior",
+      "produces": "REVIEW.md",
+      "requires": [
+        "## 逐条对账",
+        "## 判决"
+      ],
+      "verdict": [
+        "通过",
+        "打回"
+      ],
+      "verdict_in": "## 判决"
+    }
+  ],
+  "on_reject": "dev",
+  "reject_verdict": "打回"
+}

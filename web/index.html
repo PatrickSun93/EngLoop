@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EngLoop 控制台</title>
+<link rel="preload" href="/fonts/Geist-Variable.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+
+<!-- ══ 共用顶栏（三个视图同一条）══════════════════════════════
+     从左到右：品牌和 ws 状态 · 视图切换 · ⌘K 跳转 · 读数组 · 通知 / 主题。 -->
+<header class="top">
+  <div class="brand">
+    <span class="mark" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h7a4 4 0 0 1 0 8H9"></path><path d="M11 12l-3 3 3 3"></path></svg></span>
+    <span class="brand-name">EngLoop</span>
+    <!-- WS 连接点。断线时页面变成一张静态快照 —— **那本身就是一种失聪**，
+         而它跟「一切安静」在界面上同形。所以连接状态永远占一个位置，而且带字。 -->
+    <span class="ws" id="ws" title="WebSocket 连接状态"><span id="wsdot" aria-hidden="true"></span><span id="ws-text">连接中</span> <span class="lat" id="s-lat" title="bus /health 往返">—</span></span>
+  </div>
+
+  <!-- 视图切换。数字角标：今天 = 「需要你」条数，对话 = 未读数。 -->
+  <div class="seg" role="tablist" aria-label="视图">
+    <button type="button" role="tab" id="tab-today" data-view="today" aria-selected="false">今天<i id="tab-today-n" hidden></i></button>
+    <button type="button" role="tab" id="tab-chat" data-view="chat" aria-selected="false">对话<i id="tab-chat-n" hidden></i></button>
+    <button type="button" role="tab" id="tab-lanes" data-view="lanes" aria-selected="false">泳道</button>
+  </div>
+
+  <!-- ⌘K 跳转框。**只跳房间、私聊、agent，不搜消息** —— 没有那个后端，
+       占位文字写「搜消息」就是许诺一个不存在的功能。 -->
+  <div class="cmdk" role="search">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+    <input id="jump" type="text" autocomplete="off" spellcheck="false" placeholder="跳到房间、私聊、agent…"
+           aria-label="跳到房间、私聊或 agent" aria-controls="jump-list" aria-expanded="false" role="combobox">
+    <kbd>⌘K</kbd>
+    <div class="jump-list" id="jump-list" role="listbox" hidden></div>
+  </div>
+
+  <!-- 读数组。⚠️ 「查不了」不能画成「没有」或「正常」：每一格都有自己的 `查不了` / `端点 404` 写法。 -->
+  <div class="meters" aria-label="系统读数">
+    <!-- 舰队：在线 / 总数，后面跟「失联」和「限额」两格。
+         「失联」不是「失聪」：后者读起来像 agent 自己的毛病,而这一格数的是
+         「会话在、花名册里没有」—— 那是**双方之间的连接断了**,不是它耳朵坏了。
+         (ID 和 CSS 类名保持 deaf 不动 ——
+          那对应 watchdog 的 level 值,改了就跟后端分叉。) -->
+    <div class="meter" id="s-fleet-wrap"><span>舰队</span><b><span id="s-fleet">—</span>
+      <em class="stat" id="s-deaf-wrap" title="会话在、花名册里没有 —— 去救">▲失联 <span id="s-deaf">—</span></em>
+      <!-- 「限额」= 撞了上游额度上限（watchdog 的第四档）。
+           ★ 默认 hidden，只在真有 agent 撞墙时才出现 —— 常驻一个 0 是噪音。
+           ⚠️ 它跟「失联」是**两件相反的事**：失联要去救，撞限额**不许碰**。
+           所以它没有复用 .bad 那个红色类。 -->
+      <em class="stat" id="s-limit-wrap" hidden title="撞了上游限额 —— 别推它">⏸限额 <span id="s-limit">—</span></em></b></div>
+    <!-- 队列积压。⚠️ 「排队」用 XINFO GROUPS 的 lag,**不是 XLEN** ——
+         XLEN 是流的总长度、含已消费的历史。两个数分开写，永远不合成一个总数。 -->
+    <div class="meter stat" id="s-queue-wrap"><span>队列</span><b id="s-queue">—</b></div>
+    <!-- 全量那格会在结果过期时被划掉（跑它的 commit 已经不是 HEAD，或工作区脏）。
+         一个过期的绿比没有数字更危险 —— 没有数字的时候人会去跑一遍。 -->
+    <div class="meter stat" id="s-test-wrap"><span>全量</span><b id="s-test">—</b></div>
+    <!-- 「今日」两个字不能省：光写 commit 14，那 14 是今天的还是历史总数分不清。 -->
+    <div class="meter stat" id="s-commit-wrap"><span>今日 commit</span><b id="s-commit">—</b></div>
+  </div>
+
+  <!-- 窄屏：右栏「现场」收成这个按钮（宽屏隐藏） -->
+  <button id="need-btn" type="button" class="ibtn wide" aria-controls="live" aria-expanded="false">需要你 <b id="need-btn-n">—</b></button>
+  <!-- 🏁 通知开关。**必须是一个按钮，不能在页面加载时自动请求权限** ——
+       Chrome 只接受用户手势触发的 Notification.requestPermission()，
+       自动调用会被直接判成 denied，而 denied 之后**页面自己再也要不回来了**。 -->
+  <button id="notify-btn" type="button" class="ibtn wide" title="任务完成时弹桌面通知">通知 —</button>
+  <button id="theme" type="button" class="ibtn" title="切换主题" aria-label="切换主题"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></svg></button>
+</header>
+
+<!-- watchdog 自己瞎了。默认 display:none，只有 sessions_seen===0 或探测报错才亮。
+     通栏，压在顶栏下面，三个视图都看得见。 -->
+<div id="blind" role="alert"></div>
+
+<!-- ══ 视图：今天 ══════════
+     从上到下：日期和问候 · 摘要句 · 数字行 · 等你处理 · 刚完成 · 进行中。右侧是对话抽屉。
+     ⚠️ 每一块都只画有数据撑的东西；设计稿上没有数据的（进度条、预计回来的时刻、
+       从消息正文里抠出来的数字）**不做**。 -->
+<section class="view" id="view-today" hidden aria-labelledby="tab-today">
+  <div class="today-page" id="today-page">
+    <div class="today-wrap">
+      <div class="hello">
+        <div class="d" id="today-date">—</div>
+        <h1><span id="today-hi">你好。</span><br><span class="line" id="today-line">读取中…</span></h1>
+        <!-- 摘要句：模板拼的，不调模型。第一句只说「起点之后发生的事」，第二句是「现在」的读数。 -->
+        <p class="brief" id="today-brief"><span id="brief-since">—</span><button type="button" class="info" id="brief-info" aria-label="只数已加载的频道">ⓘ</button><br><span id="brief-now">—</span></p>
+        <div class="numbers" id="today-numbers" aria-label="读数"></div>
+      </div>
+
+      <section class="tsec" id="today-need-sec" aria-labelledby="h-need">
+        <h2 id="h-need">等你处理<span class="c" id="today-need-n">—</span><span class="h2-note" id="today-need-filtered"></span></h2>
+        <div class="asks" id="today-need"><div class="empty">读取中…</div></div>
+      </section>
+
+      <section class="tsec" aria-labelledby="h-done">
+        <h2 id="h-done">刚完成<span class="h2-note" id="today-done-note"></span></h2>
+        <div class="doneL" id="today-done"><div class="empty">读取中…</div></div>
+      </section>
+
+      <section class="tsec" aria-labelledby="h-wip">
+        <h2 id="h-wip">进行中<span class="h2-note">没有进度条 —— 没有那份数据</span></h2>
+        <div class="wip" id="today-wip"><div class="empty">读取中…</div></div>
+      </section>
+    </div>
+  </div>
+
+  <!-- 右侧对话抽屉（400px）。**里面没有第二套对话渲染** —— 进今天视图时，对话视图中间那一栏的
+       `#feed` 和 `#composer` 整个移进 `#drawer-body`，回对话视图时再移回去（app.js placeChatColumn）。 -->
+  <aside class="drawer" id="drawer" aria-label="对话抽屉">
+    <div class="drawer-h">
+      <div class="drawer-ti">
+        <div class="ti"><span class="hash" id="drawer-hash">@</span><span id="drawer-name">JARVIS</span></div>
+        <div class="sb" id="drawer-sub">私聊</div>
+      </div>
+      <button type="button" class="x" id="drawer-x" aria-label="收起对话抽屉" title="收起对话抽屉" aria-controls="drawer" aria-expanded="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg></button>
+    </div>
+    <div class="drawer-body" id="drawer-body"></div>
+  </aside>
+  <!-- 抽屉收起时的把手（宽屏贴右边，窄屏是右下角的按钮） -->
+  <button type="button" class="drawer-open" id="drawer-open" aria-controls="drawer" aria-expanded="false" title="打开对话抽屉"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg><span>对话</span><b id="drawer-open-name">@JARVIS</b></button>
+</section>
+
+<!-- ══ 视图：泳道 ══════════
+     每个 agent 一列（live + deaf）：它收到的和发出的消息按时间排；撞限额的和会话已不在的收进右侧窄栏。
+     底部命令条：**只能发给编排者或房间** —— 后端没有「人直接发给 agent」的接口。
+     ⚠️ 命令输出块、进度条、在线时长、worktree 名、打开 tmux、加人 —— 没有数据或没有端点，**不做**。 -->
+<section class="view" id="view-lanes" hidden aria-labelledby="tab-lanes">
+  <!-- 窄屏（< 900px）：一次一列，上面一排 tab -->
+  <div class="lanes-tabs" id="lanes-tabs" role="tablist" aria-label="泳道"></div>
+  <!-- agents 报错 / watchdog 看不见：不画列，画一块「查不了」 -->
+  <div class="lanes-cant" id="lanes-cant" hidden></div>
+  <div class="lanes-body" id="lanes-body">
+    <div class="lanes" id="lanes"><div class="empty">读取中…</div></div>
+    <aside class="dock" id="lanes-dock" aria-label="收起的 agent（撞限额的、会话已不在的）"></aside>
+  </div>
+
+  <!-- 命令条。目标是一个真的 <select>（Tab 走得到）；输入框里 Alt+↑ / Alt+↓ 换目标。**不截 Tab。** -->
+  <div class="cmd" id="cmd">
+    <div class="cmd-tg">
+      <label for="cmd-target">发给</label>
+      <select id="cmd-target" title="只能发给编排者或房间 —— 给 agent 派活要通过编排者"></select>
+      <span class="cmd-hint" id="cmd-hint" hidden></span>
+    </div>
+    <div class="cmd-line">
+      <!-- 收件人提示紧挨着输入框，样式跟 composer 的 #to 一样 -->
+      <span class="to to-dm" id="cmd-to">发到 @JARVIS（私聊）</span>
+      <label for="cmd-input" class="sr-only">消息</label>
+      <textarea id="cmd-input" rows="1" placeholder="说点什么…（Ctrl/⌘+Enter 发送，Enter 换行，Alt+↑↓ 换目标）"></textarea>
+      <span class="kbhint"><span class="kb">⌘ ↵</span> 发送</span>
+      <button class="send" id="cmd-send" type="button" title="Ctrl/⌘+Enter">发送</button>
+    </div>
+    <div class="cmd-status" id="cmd-status" role="status" aria-live="polite"></div>
+  </div>
+</section>
+
+<!-- ══ 视图：对话 ════════════════════════════════════════════════════════ -->
+<section class="view" id="view-chat" hidden aria-labelledby="tab-chat">
+
+  <!-- 舰队带：每个 agent 一张卡。 -->
+  <section class="fleet" id="fleet" aria-label="舰队">
+    <div class="fleet-h">
+      <span class="t">舰队</span>
+      <span class="n" id="fleet-n">—</span>
+      <span class="s" id="seen"></span>
+    </div>
+    <div class="cards" id="agents"><div class="empty">读取中…</div></div>
+  </section>
+
+  <div class="app" id="app">
+    <nav id="chan-nav" aria-label="房间和私聊">
+      <div class="grp">
+        <div class="grp-h">房间 <button id="new-room" type="button" title="新建房间" aria-label="新建房间">＋</button></div>
+        <!-- 成员在建房间时定死：不在成员表里的 agent 收不到扇出，
+             而它不会有任何报错 —— 所以表单里必须把这句写出来。 -->
+        <form id="room-form" hidden>
+          <input id="room-name" type="text" placeholder="房间名" maxlength="40" autocomplete="off" aria-label="房间名">
+          <div class="room-members" id="room-members"></div>
+          <div class="room-hint">勾中的 agent 才收得到这个房间的消息。<b>建完改不了。</b></div>
+          <div class="room-actions">
+            <button type="submit" class="send">创建</button>
+            <button type="button" id="room-cancel">取消</button>
+          </div>
+        </form>
+        <div id="rooms"><div class="empty">读取中…</div></div>
+      </div>
+
+      <div class="grp">
+        <div class="grp-h">私聊</div>
+        <div id="dms"></div>
+      </div>
+    </nav>
+
+    <main id="chat-main">
+      <div class="room-bar">
+        <button id="nav-btn" type="button" class="ibtn narrow-only" aria-controls="chan-nav" aria-expanded="false" title="房间和私聊">☰</button>
+        <div class="room-head">
+          <div class="room-title"><span class="hash" id="ch-hash">@</span><span id="ch-name">JARVIS</span></div>
+          <div class="room-sub" id="ch-sub"></div>
+        </div>
+        <div class="members" id="ch-members"></div>
+        <button id="files-btn" type="button" class="tab-btn" title="agent 生成的文件">文件</button>
+      </div>
+
+      <div class="feed" id="feed"></div>
+
+      <div class="composer" id="composer">
+        <div class="box-in">
+          <!-- 「正在回复 X」。跟 #to 一样是**「这条会去哪」**的一部分 ——
+               看不见它的话，人以为自己在发顶层发言，实际进了某条 thread。
+               ★ 两个都紧挨着输入框。 -->
+          <div class="replying" id="replying" hidden></div>
+          <span class="to" id="to">发到 @JARVIS</span>
+          <!-- renderBar() 会覆盖这个 placeholder；这里写同一句，免得加载那一瞬
+               先显示一句不同的说明（发送键这种事，说法不一致比不说更让人犹豫）。 -->
+          <label for="input" class="sr-only">消息</label>
+          <textarea id="input" rows="2" placeholder="说点什么…（Ctrl/⌘+Enter 发送，Enter 换行）"></textarea>
+          <div class="comp-r">
+            <span class="kbhint"><span class="kb">⌘ ↵</span> 发送 · <span class="kb">↵</span> 换行</span>
+            <button class="send" id="send" type="button" title="Ctrl/⌘+Enter">发送</button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- 右栏：现场。从上到下：需要你 · 全量测试 · HEAD。 -->
+    <aside id="live" aria-label="现场">
+      <div class="live-sec">
+        <div class="sec-h"><span>需要你</span><b id="need-n">—</b></div>
+        <div class="need" id="need"><div class="empty">读取中…</div></div>
+      </div>
+      <div class="live-sec">
+        <div class="sec-h"><span>全量测试</span><span class="sec-meta" id="tests-meta"></span></div>
+        <div class="panel" id="tests-panel"><div class="empty">读取中…</div></div>
+      </div>
+      <div class="live-sec">
+        <div class="sec-h"><span>HEAD</span><span class="sec-meta" id="head-meta"></span></div>
+        <div class="panel" id="head-panel"><div class="empty">读取中…</div></div>
+      </div>
+    </aside>
+
+    <!-- 产出文件面板。默认收起，房间栏的「文件」开合。
+         ★ 从右栏位置**滑出、盖住现场栏**，不挤占对话流。
+         ★ 文件从**扫目录**来（outputs/<job_id>/），不是从消息元数据带 ——
+           文件在磁盘上是事实，元数据是声明，而声明会跟事实分叉。 -->
+    <section id="filepane" class="slide" hidden aria-label="生成的文件">
+      <div class="doc-bar">
+        <span class="doc-title">生成的文件</span>
+        <span class="doc-meta" id="files-meta"></span>
+        <button id="files-close" type="button" title="关闭" aria-label="关闭文件面板">✕</button>
+      </div>
+      <div class="files-search">
+        <input id="files-q" type="search" placeholder="筛选文件名…" autocomplete="off" aria-label="筛选文件名">
+      </div>
+      <div class="files-body" id="files-body"></div>
+    </section>
+
+    <!-- 文档面板：默认收起。消息里的 docs/… 路径点开它，同样从右栏位置滑出。 -->
+    <section id="docpane" class="slide" hidden aria-label="文档">
+      <div class="doc-bar">
+        <span class="doc-title" id="doc-title">文档</span>
+        <span class="doc-meta" id="doc-meta"></span>
+        <button id="doc-close" type="button" title="关闭" aria-label="关闭文档面板">✕</button>
+      </div>
+      <div class="doc-body" id="doc-body"></div>
+    </section>
+  </div>
+</section>
+
+<!-- ★ threads.js 必须在 app.js **之前** —— app.js 里 renderFeed 直接用
+     `Threads.group`。顺序反了的话是 ReferenceError，而它发生在渲染路径上：
+     **界面一片空白，跟「没有消息」长得一模一样。**
+     ★ derive.js 在 threads.js 之后（它要 window.Threads）、app.js 之前（app.js 要 window.Derive）。 -->
+<!-- auth.js 必须在 app.js 之前：它包住 window.fetch，401 时弹登录框 -->
+<script src="/auth.js"></script>
+<script src="/threads.js"></script>
+<script src="/derive.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

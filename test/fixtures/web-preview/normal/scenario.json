@@ -1,0 +1,5 @@
+{
+  "description": "6 个 agent（编排者 + ok / warn / deaf / rate_limited / unknown），三个房间，私聊、线程、done、@Patrick、文件、测试和 git",
+  "extends": null,
+  "status": {}
+}

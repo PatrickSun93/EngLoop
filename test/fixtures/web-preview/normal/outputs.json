@@ -1,0 +1,45 @@
+{
+  "jobs": [
+    {
+      "job_id": "j-dev-r1",
+      "exists": true,
+      "mtime": "@now-27m|ms",
+      "files": [
+        {
+          "name": "run-all-abc1234.txt",
+          "kind": "text",
+          "size": 38912,
+          "mtime": "@now-27m|ms",
+          "status": "ready",
+          "superseded_partial": false
+        },
+        {
+          "name": "mutate-agy.txt",
+          "kind": "text",
+          "size": 2210,
+          "mtime": "@now-26m|ms",
+          "status": "ready",
+          "superseded_partial": true
+        }
+      ]
+    },
+    {
+      "job_id": "j-dev-2",
+      "exists": true,
+      "mtime": "@now-1m|ms",
+      "files": [
+        {
+          "name": "coverage.json",
+          "kind": "data",
+          "size": 1024,
+          "mtime": "@now-1m|ms",
+          "status": "writing",
+          "superseded_partial": false
+        }
+      ]
+    }
+  ],
+  "total": 2,
+  "truncated": false,
+  "root": "outputs"
+}

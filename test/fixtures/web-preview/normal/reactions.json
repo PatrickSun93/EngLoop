@@ -1,0 +1,123 @@
+{
+  "room": {
+    "1791000004000-0": [
+      {
+        "emoji": "👍",
+        "known": true,
+        "tier": "A",
+        "action": null,
+        "effect": "none",
+        "costs_quota": false,
+        "label": "认可",
+        "hint": "只计数、只显示，不触发任何动作。",
+        "count": 2,
+        "users": [
+          {
+            "by": "Patrick",
+            "at": 1791945346187
+          },
+          {
+            "by": "dev",
+            "at": 1791945286187
+          }
+        ]
+      }
+    ],
+    "1791000010000-0": [
+      {
+        "emoji": "🏁",
+        "known": true,
+        "tier": "A",
+        "action": null,
+        "effect": "none",
+        "costs_quota": false,
+        "label": "任务完成",
+        "hint": "agent 报完成时系统自动打在 thread 根上（by: system）。纯标记，不触发动作 —— 验收请点 ✅。",
+        "count": 1,
+        "users": [
+          {
+            "by": "system",
+            "at": 1791945346187
+          }
+        ]
+      }
+    ],
+    "1791000012000-0": [
+      {
+        "emoji": "✅",
+        "known": true,
+        "tier": "B",
+        "action": "mark_verified",
+        "effect": "immediate",
+        "costs_quota": false,
+        "label": "验收通过",
+        "hint": "给这条打「已验收」标记并回执给发送者。只加标记，不删不改任何东西。",
+        "count": 1,
+        "users": [
+          {
+            "by": "Patrick",
+            "at": 1791945346187
+          }
+        ]
+      }
+    ],
+    "1791000020500-0": [
+      {
+        "emoji": "🔙",
+        "known": true,
+        "tier": "A",
+        "action": null,
+        "effect": "none",
+        "costs_quota": false,
+        "label": "核验没过 · 已打回",
+        "hint": "独立核验没过，系统已经把没过的项打回给那个 agent（by: system）。同一件活第 3 次没过会转给编排者。",
+        "count": 1,
+        "users": [
+          {
+            "by": "system",
+            "at": "@now-110m|ms"
+          }
+        ]
+      }
+    ],
+    "1791000021000-0": [
+      {
+        "emoji": "🏁",
+        "known": true,
+        "tier": "A",
+        "action": null,
+        "effect": "none",
+        "costs_quota": false,
+        "label": "任务完成",
+        "hint": "agent 报完成时系统自动打在 thread 根上（by: system）。纯标记，不触发动作 —— 验收请点 ✅。",
+        "count": 1,
+        "users": [
+          {
+            "by": "system",
+            "at": "@now-65m|ms"
+          }
+        ]
+      }
+    ],
+    "1791000021500-0": [
+      {
+        "emoji": "🏁",
+        "known": true,
+        "tier": "A",
+        "action": null,
+        "effect": "none",
+        "costs_quota": false,
+        "label": "任务完成",
+        "hint": "agent 报完成时系统自动打在 thread 根上（by: system）。纯标记，不触发动作 —— 验收请点 ✅。",
+        "count": 1,
+        "users": [
+          {
+            "by": "system",
+            "at": "@now-45m|ms"
+          }
+        ]
+      }
+    ]
+  },
+  "dm": {}
+}

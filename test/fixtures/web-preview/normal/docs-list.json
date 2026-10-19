@@ -1,0 +1,13 @@
+{
+  "root": "docs",
+  "count": 1,
+  "max_bytes": 2097152,
+  "files": [
+    {
+      "path": "TASK_UI-redesign.md",
+      "size": 9123,
+      "mtime": "@now-1d",
+      "title": "任务 UI：控制台重做成三个视图（今天 · 对话 · 泳道）"
+    }
+  ]
+}

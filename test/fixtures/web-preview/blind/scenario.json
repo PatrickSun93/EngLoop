@@ -1,0 +1,5 @@
+{
+  "description": "watchdog 瞎了：sessions_seen = 0，三组全空（其余端点同 normal）",
+  "extends": "normal",
+  "status": {}
+}

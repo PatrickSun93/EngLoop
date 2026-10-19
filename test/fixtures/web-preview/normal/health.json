@@ -1,0 +1,7 @@
+{
+  "ok": true,
+  "service": "engloop-bus",
+  "redis": "pong",
+  "ws_clients": 1,
+  "uptime_s": 86400
+}

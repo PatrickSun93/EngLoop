@@ -1,0 +1,22 @@
+{
+  "at": "@now|ms",
+  "sessions_seen": 0,
+  "watchdog_blind": true,
+  "deaf": [],
+  "stale": [],
+  "rate_limited": [],
+  "orphan_pel": [],
+  "live": [],
+  "offline_candidates": [
+    {
+      "name": "designer",
+      "type": "design",
+      "type_source": "claude-md-heading",
+      "cwd": "agents/designer",
+      "source": "agents-dir"
+    }
+  ],
+  "offline_source": "agents-dir",
+  "launching": {},
+  "dropouts": []
+}

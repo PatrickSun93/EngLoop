@@ -1,0 +1,40 @@
+⏺ Bash(node bin/next.js --name dev > temp/poll-dev.json)
+  ⎿  (No content)
+
+⏺ Read(temp/poll-dev.json)
+  ⎿  Read 1 line
+  ⎿  (No content)
+     第 3 项已核对，结果写进了报告。
+
+✻ Worked for 2m 10s
+
+  ⎿  (No content)
+     第 3 项已核对，结果写进了报告。
+
+✻ Worked for 2m 10s
+
+  ⎿  (No content)
+     第 3 项已核对，结果写进了报告。
+
+✻ Worked for 2m 10s
+
+  ⎿  (No content)
+     第 3 项已核对，结果写进了报告。
+
+✻ Worked for 2m 10s
+
+  ⎿  (No content)
+     第 3 项已核对，结果写进了报告。
+
+✻ Worked for 2m 10s
+
+  ⎿  (No content)
+  ⎿  You've hit your session limit · resets 7:10pm (America/Los_Angeles)
+     /upgrade to increase your usage limit.
+✻ Worked for 2m 10s
+
+  ⎿  (No content)
+────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ bypass permissions on (shift+tab to cycle)

@@ -1,0 +1,22 @@
+{
+  "name": "engloop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Multi-agent orchestration on Redis Streams + tmux",
+  "scripts": {
+    "test": "node test/run-all.js",
+    "test:queue": "node test/queue.test.js",
+    "demo:crash": "node test/crash-recovery-demo.js",
+    "preflight": "./bin/preflight.sh",
+    "next": "node bin/next.js",
+    "preview": "node scripts/web-preview.js"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "ioredis": "^6.0.0",
+    "ws": "^8.21.2"
+  },
+  "devDependencies": {
+    "playwright": "^1.62.1"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "hash": "pdp-review-0a1b2c3d4e5f",
+  "name": "pdp-review",
+  "members": [
+    "JARVIS",
+    "senior"
+  ],
+  "count": 200,
+  "messages": [
+    {
+      "id": "1791000023000-0",
+      "from": "JARVIS",
+      "text": "PDP 第 2 步复审完了，没有阻塞项。",
+      "timestamp": "@now-15d",
+      "kind": "notice",
+      "sender_type": "agent"
+    }
+  ],
+  "merges": {}
+}

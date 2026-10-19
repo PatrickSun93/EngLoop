@@ -1,0 +1,42 @@
+{
+  "_note": [
+    "eval worker 的权限，跟 lib/agent-capabilities.js 里 eval 那行一致：web 有、bash 没有。",
+    "网页内容会进它的上下文，所以它不能执行任何东西。",
+    "⚠️ 这份文件不是防线：agent / worker 起 claude 时带 `--setting-sources user`，cwd 里的这份**不加载**。",
+    "   真正生效的权限是 lib/agent-settings.js 按 lib/agent-capabilities.js 生成、用 `--settings` 注入的那份",
+    "   （PreToolUse hook 也由它用绝对路径重新给）。这份是能力表的**意图声明**，test/templates.test.js 守着两边一致。",
+    "",
+    "不该有的工具**显式 deny**，不靠「不在 allow 里」：deny 是显式的拒绝声明，在任何一层都生效。",
+    "PreToolUse hook 依赖起 worker 时注入的 ENGLOOP_AGENT_TYPE；hook 读不到类型时一律拒绝。"
+  ],
+  "permissions": {
+    "_allow_note": [
+      "只给 WebSearch / WebFetch：worker 的任务从 prompt 来、结果走 stdout，不需要碰文件系统。",
+      "判据是不对称：将来真需要，加回来容易且可见；多给的权限不容易被发现。",
+      "（CLAUDE.md 由 claude 自动加载，不需要 Read 工具。）"
+    ],
+    "allow": [
+      "WebSearch",
+      "WebFetch"
+    ],
+    "deny": [
+      "Bash",
+      "Write",
+      "Edit",
+      "NotebookEdit"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|WebSearch|WebFetch|Fetch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node {{ENGLOOP}}/hooks/check_security.js"
+          }
+        ]
+      }
+    ]
+  }
+}

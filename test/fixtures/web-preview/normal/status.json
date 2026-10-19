@@ -1,0 +1,44 @@
+{
+  "at": "@now|ms",
+  "tests": {
+    "passed": 3932,
+    "failed": 5,
+    "files": 112,
+    "at": "@now-6m",
+    "age_ms": 360000,
+    "commit": "abc1234def5678abc1234def5678abc1234def56",
+    "dirty_when_run": false,
+    "skipped": [
+      "bus-login.playwright.js"
+    ]
+  },
+  "git": {
+    "available": true,
+    "head": "abc1234def5678abc1234def5678abc1234def56",
+    "head_subject": "Merge pull request #2 from example/feature-branch",
+    "dirty": false,
+    "commits_today": 14
+  },
+  "stale": false,
+  "stale_reasons": [],
+  "stale_hint": null,
+  "queue": {
+    "processing": 1,
+    "waiting": 3,
+    "unknown_lag": false,
+    "streams": [
+      {
+        "stream": "orch:in:human",
+        "group": "orch",
+        "pending": 0,
+        "lag": 1
+      },
+      {
+        "stream": "agent:dev:in",
+        "group": "agent:dev",
+        "pending": 1,
+        "lag": 2
+      }
+    ]
+  }
+}

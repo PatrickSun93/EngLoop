@@ -1,0 +1,7 @@
+[
+  {
+    "username": "Patrick",
+    "key_sha256": "<别手填 —— 跑 node bin/bus-user.js add Patrick --manage，它生成 key、只存哈希、把 key 打印一次>",
+    "can_manage_workers": true
+  }
+]

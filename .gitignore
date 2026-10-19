@@ -1,0 +1,34 @@
+node_modules/
+.DS_Store
+*.log
+results/
+temp/
+.langgraph_api/
+
+# bus 的用户表
+# 里面只有 key 的 sha256，但它决定「谁能以谁的身份说话」—— 不进 git。
+# 形状见 config/users.json.template；生成：node bin/bus-user.js add <username> [--manage]
+config/users.json
+
+# 对话历史导出
+#
+# ⚠️ **不进 git 是一个决定，不是默认** —— 而且它有代价：
+#   history/ 是「JARVIS 说过什么」在流被裁之后的唯一副本。
+#   不进 git = 磁盘挂了就没了。
+#
+# 不进的理由：一天约 1.2 MB，一年约 440 MB，而且它每 5 分钟被追加。
+history/
+
+# agent 产出物
+# 跟 history/ 同理：这是数据不是代码。
+outputs/
+
+# Python 编译产物
+#
+# `git status --porcelain` 把**未跟踪目录折叠成一行**（`?? scripts/`），看不出里面有 `__pycache__/` ——
+# 一次 `git add -A` 就会把它带进来。要看未跟踪的**文件**，用 `git status -uall`（别信目录那一行）。
+__pycache__/
+*.pyc
+
+# DeepSeek 钥匙（0600，进 secretPaths）
+config/deepseek.key

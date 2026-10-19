@@ -1,0 +1,10 @@
+{
+  "description": "/api/status 返回 404（express 默认的 HTML，不是后端的 JSON；其余端点同 normal）",
+  "extends": "normal",
+  "status": {
+    "status.json": {
+      "code": 404,
+      "html": "<!DOCTYPE html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"><title>Error</title></head><body><pre>Cannot GET /api/status</pre></body></html>\n"
+    }
+  }
+}
