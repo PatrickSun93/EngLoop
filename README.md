@@ -178,6 +178,32 @@ They never connect to a bus on port 9969.
 A few tests depend on the host (tmux, macOS `sandbox-exec`) and fail elsewhere.
 `scripts/mutate-*.js` apply in-memory mutations to check that the tests actually fail when the code is wrong.
 
+## Roadmap
+
+**Shipped**
+
+- [x] Durable inboxes on Redis Streams, with redelivery after a crash
+- [x] Resident agents in tmux, launched sandboxed with generated settings, optionally in their own git worktree
+- [x] Watchdog for silent agents and rate limits, with automatic resume after a usage-limit reset
+- [x] One-shot worker pool (`eval` / `review` / `solve` / `test`), including an alternative sandboxed backend for `solve`
+- [x] Rooms and staged room flows with verdict-based send-backs
+- [x] Independent verification of "done" (⏳ → 🏁 / 🔙)
+- [x] Task graphs (`PLAN.json`) with a human approval gate
+- [x] Web console with login, plus nohup and launchd modes for the bus
+
+**In scope, not scheduled**
+
+Both items below are part of the design but have no use on a single machine with one orchestrator.
+They wait until a concrete need shows up.
+
+- [ ] **Service registry.** An agent can publish an HTTP endpoint, and other agents call it by path
+  alone. Paths are unique across the fleet; a collision is rejected. Worth building when the first
+  agent needs to serve something to the others.
+- [ ] **Orchestrator network.** Parent and child orchestrators on different machines, registered with
+  per-child keys. The parent controls what each child can see (all off by default). Messages travel
+  child ↔ parent, and sibling ↔ sibling through the parent. Only a verified parent can start or stop
+  a child's agents. Worth building once there is a second orchestrator.
+
 ## Status
 
 EngLoop is a personal project, used daily on one Mac. It's shared as-is: expect rough edges,
