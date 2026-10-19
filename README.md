@@ -1,80 +1,188 @@
 # EngLoop
 
-多智能体编排：一个常驻的编排者（JARVIS）和若干常驻 agent，各自跑在一个 tmux 会话里的 Claude Code 中，
-通过 Redis Streams 收发消息；一次性的 worker（eval / review / solve / test / write）由 bus 里的 worker 池按需拉起。
-人通过本机网页（`http://127.0.0.1:9969`）跟它们对话。
+**A multi-agent orchestrator for Claude Code, built on Redis Streams and tmux.**
 
-## 需要什么
+EngLoop runs a long-lived orchestrator (JARVIS) and a team of resident agents, each in its own
+Claude Code session inside tmux. They talk to each other and to you through durable Redis Streams.
+One-shot workers (eval, review, solve, test) are spawned on demand by a worker pool. You watch and
+steer everything from a local web console.
 
-- macOS（launchd、sandbox 相关的部分只在 macOS 上有）
+![Today view: what needs you, what just finished, fleet health](assets/screenshots/today.png)
+
+> The screenshots come from the built-in preview server (`npm run preview`), which serves
+> synthetic fixture data. The console UI text is in Chinese.
+
+---
+
+## Why
+
+Most multi-agent setups treat agents as functions: call one, get a result back. EngLoop treats them
+as **colleagues who stay online**. Each agent keeps its own session, context and working directory.
+Agents receive work through an inbox, report back, and keep going. The hard part is keeping a group
+like that reliable, and that is most of what this repo does:
+
+- **Messages are never lost.** Each inbox is a Redis Stream with a consumer group. A message is
+  acknowledged only after the agent replies. If an agent crashes mid-task, the message stays
+  pending and is redelivered with a `redelivered: true` flag (`XREADGROUP` → `XACK`, with
+  `XAUTOCLAIM` for recovery). Delivery is at-least-once by design.
+- **A silent agent is detected on the server.** The watchdog reads each consumer's idle time from
+  Redis (`XINFO CONSUMERS`). It doesn't rely on the agent to report its own health. An agent that
+  stops polling is flagged as *deaf* and nudged, and a rate-limited agent is recognized as rate-limited.
+- **"Done" is verified, not trusted.** When an agent marks work done and attaches evidence, an
+  independent check runs before the task gets its 🏁. A failed check bounces the task back to the agent.
+  After repeated failures it escalates to the orchestrator.
+- **The model-facing contract is tiny.** An agent's whole loop is: run `node bin/next.js`, which
+  blocks for up to about 10 minutes. Then handle the JSON it returns, write a reply file into its
+  outbox, and repeat. Transport, routing, rooms and verification all sit below that interface.
+
+## How it works
+
+```
+               ┌──────────────────── bus (bin/serve.js, 127.0.0.1:9969) ────────────────────┐
+  you ──web──▶ │  HTTP + WebSocket · auth · relay · rooms · watchdog · worker pool · graphs  │
+               └───────┬─────────────────────────┬──────────────────────────┬──────────────┘
+                       │ Redis Streams            │                          │ work:<type>
+          ┌────────────▼───────────┐   ┌──────────▼──────────┐    ┌──────────▼───────────┐
+          │ orchestrator (JARVIS)  │   │ resident agents     │    │ one-shot workers     │
+          │ tmux: orch             │◀─▶│ tmux: agent_<name>  │    │ eval/review/solve/   │
+          │ loop: bin/next.js      │   │ loop: bin/next.js   │    │ test (claude -p)     │
+          └────────────────────────┘   └─────────────────────┘    └──────────────────────┘
+               replies: temp/outbox/<name>/*.json  ──▶  relay  ──▶  recipient's inbox stream
+```
+
+- **Bus.** A single Node process (`bin/serve.js`) that owns the queue, the relay, the roster,
+  the watchdog, rooms, the worker pool and the task-graph runner. It binds to `127.0.0.1` only.
+- **Orchestrator.** A Claude Code session whose instructions are the root `CLAUDE.md` and
+  `protocols/`. It talks to people, hands work to agents, and relays results back.
+- **Resident agents.** Started with `./start.sh <name>` or `node bin/agent-start.js`. Each
+  runs in its own tmux session and working directory, optionally in its own git worktree. Agents
+  run sandboxed by default. Their `CLAUDE.md` and settings are rendered from `templates/`.
+- **Roster.** Addressing is by name. A reply to a name on the roster lands in that agent's inbox,
+  and a reply to any other name goes to the web console as a message to a person.
+- **Rooms.** Group conversations. Each room is one stream (the source of truth for its history),
+  and the bus fans messages out to each participant's inbox, so agents need no changes to take part.
+  **Flows** (`protocols/flows/*.json`) turn a room into a staged pipeline, for example
+  survey → tasks → implement → review, with verdict-based send-backs.
+- **Worker pool.** Each worker type has its own `work:<type>` stream. A worker takes one task from
+  its prompt, prints the result to stdout and exits. The pool acknowledges the task; a failure is
+  never acked and gets retried. The default types are `eval`, `review`, `solve` and `test`.
+- **Task graphs.** A `PLAN.json` describes a DAG of tasks. `bin/graph.js` validates it, freezes
+  it, waits for human approval, and lets the bus schedule the nodes across agents and workers.
+
+## The web console
+
+Open `http://127.0.0.1:9969` and sign in with a key from `bin/bus-user.js`.
+
+| View | What it's for |
+|---|---|
+| **Today** | A greeting and a summary line. Cards for anything waiting on you (a deaf agent, an unanswered @mention). A feed of reports finished in the last 24 hours, with their verification status. |
+| **Conversations** | The fleet strip: every agent's state (online, deaf, rate-limited, slow to poll, not started) and its queue depth. Rooms and direct messages, plus the "needs you" panel and the latest full test run. |
+| **Lanes** | One column per agent showing everything it sent and received, side by side, so you can follow each agent's traffic at a glance. |
+
+![Conversations view: fleet strip, rooms and DMs, needs-you panel](assets/screenshots/conversations.png)
+
+![Lanes view: one column per agent](assets/screenshots/lanes.png)
+
+There is also a ⌘K jump palette, desktop notifications, and a dark theme.
+
+To work on the UI without a bus, Redis or tmux:
+
+```bash
+npm run preview          # serves web/ against test/fixtures/web-preview/ on a random port
+                         # (never 9969); ?scenario=blind|busy-queue|empty|… picks a fixture set
+```
+
+## Requirements
+
+- macOS. The launchd integration and the `sandbox-exec` sandboxing are macOS-only; the rest is plain Node.
 - Node.js 22+
-- Redis（开 AOF；只用 Streams）
+- Redis with AOF enabled (only Streams are used)
 - tmux
-- Claude Code CLI（`claude`）
+- The [Claude Code](https://docs.claude.com/en/docs/claude-code) CLI (`claude`), signed in
 
-## 起停
+## Quick start
 
 ```bash
 npm ci
-node bin/bus-user.js add <用户名> --manage   # 生成网页登录用的 key（只存哈希，key 打印一次）
-./start.sh                     # 起 bus（默认 nohup）+ 编排者；./stop.sh 停
-open http://127.0.0.1:9969     # 聊天界面
-tmux attach -t orch            # 坐进编排者会话
-./start.sh dev                 # 再起一个名叫 dev 的常驻 agent
-node bin/agent-start.js --list # 看谁在线
-./bin/preflight.sh             # 自检
+node bin/bus-user.js add <username> --manage   # creates a web login key (printed once; only the hash is stored)
+./start.sh                       # start the bus (nohup by default) and the orchestrator
+open http://127.0.0.1:9969       # web console
+tmux attach -t orch              # sit in the orchestrator's session
+./start.sh dev                   # start a resident agent named "dev"
+node bin/agent-start.js --list   # who's online
+./bin/preflight.sh               # self-check
+./stop.sh                        # graceful shutdown
 ```
 
-`config/users.json` 不进 git；形状见 `config/users.json.template`。
+`config/users.json` is git-ignored. See `config/users.json.template` for its shape.
 
-## bus 的两种起法
+Task graphs:
 
-默认 **nohup**。装了 launchd 之后起、停、重启都走 launchd。两条路都进 `bin/serve.sh`：
-node 路径、`PATH`、worker 池类型、日志（`temp/bus.log`）只在那里写一次。
+```bash
+node bin/graph.js start <dir>      # validate <dir>/PLAN.json, freeze it, and start (or wait for approval)
+node bin/graph.js approve <id>
+node bin/graph.js status [<id>]
+node bin/graph.js retry <id> <node>
+node bin/graph.js cancel <id>
+```
 
-| | nohup（默认） | launchd（`node bin/launchd.js install` 之后） |
+## Running the bus: nohup or launchd
+
+The default is **nohup**. Once you install the launchd agent, start, stop and restart all go
+through launchd instead. Both paths run `bin/serve.sh`, so the node path, `PATH`, worker types
+and log location (`temp/bus.log`) are defined in one place.
+
+| | nohup (default) | launchd (after `node bin/launchd.js install`) |
 |---|---|---|
-| 判据 | `~/Library/LaunchAgents/<label>.plist` 不在 | 那个文件在 |
-| 起 | `./start.sh` ⇒ `nohup bash bin/serve.sh` | `./start.sh` ⇒ `launchctl bootstrap`（在册就 `kickstart`） |
-| 停 | `./stop.sh` ⇒ 按进程杀 `bin/serve.js` | `./stop.sh` ⇒ 先 `launchctl bootout`，再按进程杀；不删 plist |
-| 重启 | `node bin/bus-restart.js` | `node bin/bus-restart.js` ⇒ `launchctl kickstart -k` |
-| 崩了 | 没人拉 | KeepAlive |
-| 登录后 | 不起，要手动 `./start.sh` | 登录就起（RunAtLoad） |
+| Start | `./start.sh` → `nohup bash bin/serve.sh` | `./start.sh` → `launchctl bootstrap` / `kickstart` |
+| Stop | `./stop.sh` | `./stop.sh` → `launchctl bootout`, then stop the process (the plist is kept) |
+| Restart | `node bin/bus-restart.js` | `node bin/bus-restart.js` → `launchctl kickstart -k` |
+| If it crashes | stays down | KeepAlive restarts it |
+| After login | start it by hand | starts automatically (RunAtLoad) |
 
 ```bash
-node bin/launchd.js print       # 看生成的 plist，不动任何东西
-node bin/launchd.js status      # 装没装、在没在册、pid
-node bin/launchd.js install     # 写 plist ＋ bootstrap（bus 正以 nohup 跑着时会拒绝：先 ./stop.sh）
-node bin/launchd.js uninstall   # bootout ＋ 删 plist，之后回到 nohup
+node bin/launchd.js print       # show the generated plist; changes nothing
+node bin/launchd.js status
+node bin/launchd.js install     # refuses while a nohup bus is running: ./stop.sh first
+node bin/launchd.js uninstall   # back to nohup
 ```
 
-launchd 只托管 bus（它再管队列、relay、watchdog）。编排者和 agent 还是 `./start.sh` 起。
-Redis 不归这里管（比如用 `brew services`）。
+launchd manages only the bus. The orchestrator and agents are still started by `./start.sh`,
+because a Claude Code session needs a logged-in user. Redis is managed separately, for example
+with `brew services`.
 
-## 目录
+## Repository layout
 
-| 路径 | 是什么 |
+| Path | What's there |
 |---|---|
-| `bin/` | 入口：bus（`serve.js`）、poller（`next.js`）、起 agent（`agent-start.js`）、任务图（`graph.js`）… |
-| `lib/` | 队列、relay、花名册、watchdog、worker 池、房间、任务图调度、完成核验… |
-| `web/` | 网页界面 |
-| `hooks/` | Claude Code hook（安全检查、Stop 检查） |
-| `protocols/` | 每轮注入给 agent 的身份与轮询规则；`flows/` 是房间流程模板 |
-| `templates/` | 各类 agent / worker 的 `CLAUDE.md` 与 `.claude/settings.json` 模板 |
-| `workers/` | worker 的工作目录（每次派活由 `lib/provision.js` 从模板重新渲染） |
-| `agents/` | 常驻 agent 的工作目录（`agent-start.js` 起 agent 时按模板生成；公开版里一开始没有） |
-| `test/` | 测试；`node test/run-all.js` 跑全部 |
+| `bin/` | Entry points: bus (`serve.js`), poller (`next.js`), agent launcher (`agent-start.js`), task graphs (`graph.js`), launchd, users, … |
+| `lib/` | Queue, relay, roster, watchdog, worker pool, rooms, graph runner, done-verification, sandbox profiles, auth |
+| `web/` | The web console (vanilla JS, no build step) |
+| `hooks/` | Claude Code hooks (security check, Stop checks) |
+| `protocols/` | The identity and polling rules injected into agents each turn; `flows/` holds room flow templates |
+| `templates/` | `CLAUDE.md` and `.claude/settings.json` templates for each agent and worker type |
+| `workers/` | Worker working directories, re-rendered from `templates/` for each task |
+| `agents/` | Resident agents' working directories, created on first start (empty in a fresh clone) |
+| `scripts/` | Mutation-testing scripts, UI preview server, maintenance tools |
+| `test/` | Tests; `node test/run-all.js` runs them all |
 
-## 测试
+## Tests
 
 ```bash
-node test/run-all.js                 # 全部（每个文件一个子进程）
+node test/run-all.js                        # everything, one subprocess per file
 node test/run-all.js --only queue.test.js
 ```
 
-测试用 Redis 的 1–15 号库（自动抢一个空闲的，锁在系统临时目录），**从不碰 db 0**；
-不连 9969 上的 bus。少数测试依赖本机环境（tmux、macOS sandbox），在别的环境里会红。
+Tests use Redis databases 1–15 (each run claims a free one and locks it) and **never touch db 0**.
+They never connect to a bus on port 9969.
+A few tests depend on the host (tmux, macOS `sandbox-exec`) and fail elsewhere.
+`scripts/mutate-*.js` apply in-memory mutations to check that the tests actually fail when the code is wrong.
+
+## Status
+
+EngLoop is a personal project, used daily on one Mac. It's shared as-is: expect rough edges,
+a Chinese-language UI and protocols, and macOS assumptions.
 
 ## License
 
-License: MIT（见 `LICENSE`）。
+MIT. See [`LICENSE`](LICENSE).
