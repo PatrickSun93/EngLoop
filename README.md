@@ -222,10 +222,10 @@ These are part of the design and will be built when a concrete need shows up.
   per-child keys. The parent controls what each child can see (all off by default). Messages travel
   child ↔ parent, and sibling ↔ sibling through the parent. Only a verified parent can start or stop
   a child's agents. Worth building once there is a second orchestrator.
-- [ ] **Agents beyond Claude Code.** Run Codex, Cursor, opencode and other agent CLIs as resident
-  agents and workers. Today agents are Claude Code sessions, and only the `solve` worker has an
-  alternative backend. The pieces that assume Claude Code (launch flags, generated settings, hooks,
-  rate-limit detection) would each need a per-CLI adapter.
+- [ ] **Agents beyond Claude Code, starting with Antigravity CLI (`agy`).** `agy` already runs as a
+  sandboxed backend for the `solve` worker. Next is running it as a resident agent and behind other
+  worker types. The pieces that assume Claude Code (launch flags, generated settings, hooks,
+  rate-limit detection) would each need a per-CLI adapter, which other agent CLIs could later plug into.
 
 ## Status
 
