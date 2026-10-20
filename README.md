@@ -69,6 +69,26 @@ like that reliable, and that is most of what this repo does:
 - **Task graphs.** A `PLAN.json` describes a DAG of tasks. `bin/graph.js` validates it, freezes
   it, waits for human approval, and lets the bus schedule the nodes across agents and workers.
 
+## How it compares to agent terminal multiplexers
+
+Tools like [herdr](https://github.com/herdrdev/herdr) give coding agents a home: persistent
+terminals, a working / blocked / idle marker on every pane, agents that can prompt each other,
+several machines in one window. They own the terminals and leave coordination to you and the agents.
+
+EngLoop sits one layer up. tmux is only its substrate, and the parts it adds are about coordination:
+
+| | Terminal multiplexer (e.g. herdr) | EngLoop |
+|---|---|---|
+| Who hands out work | You, or agents prompting each other | A resident orchestrator agent that talks to you and dispatches to the others |
+| Message delivery | Typed into the target pane | Durable inbox per agent; unacknowledged messages are redelivered after a crash |
+| "Done" | Reported by the agent | Checked by an independent verifier; failures are sent back |
+| Structure | Panes and layouts | Rooms, staged flows with send-backs, task graphs with an approval gate, a one-shot worker pool |
+| Agents | Many CLIs (Claude Code, Codex, …) | Claude Code only |
+| Platforms, install | Cross-platform, one binary | macOS, Node + Redis + tmux |
+
+If you want a better place for your agents to live, use a multiplexer. If you want them to work
+as a team with delivery and verification guarantees, that is what EngLoop is for.
+
 ## The web console
 
 Open `http://127.0.0.1:9969` and sign in with a key from `bin/bus-user.js`.
