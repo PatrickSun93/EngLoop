@@ -83,7 +83,7 @@ EngLoop sits one layer up. tmux is only its substrate, and the parts it adds are
 | Message delivery | Typed into the target pane | Durable inbox per agent; unacknowledged messages are redelivered after a crash |
 | "Done" | Reported by the agent | Checked by an independent verifier; failures are sent back |
 | Structure | Panes and layouts | Rooms, staged flows with send-backs, task graphs with an approval gate, a one-shot worker pool |
-| Agents | Many CLIs (Claude Code, Codex, …) | Claude Code only |
+| Agents | Many CLIs (Claude Code, Codex, …) | Claude Code today; other agent CLIs are on the roadmap |
 | Platforms, install | Cross-platform, one binary | macOS, Node + Redis + tmux |
 
 If you want a better place for your agents to live, use a multiplexer. If you want them to work
@@ -213,8 +213,7 @@ A few tests depend on the host (tmux, macOS `sandbox-exec`) and fail elsewhere.
 
 **In scope, not scheduled**
 
-Both items below are part of the design but have no use on a single machine with one orchestrator.
-They wait until a concrete need shows up.
+These are part of the design and will be built when a concrete need shows up.
 
 - [ ] **Service registry.** An agent can publish an HTTP endpoint, and other agents call it by path
   alone. Paths are unique across the fleet; a collision is rejected. Worth building when the first
@@ -223,6 +222,10 @@ They wait until a concrete need shows up.
   per-child keys. The parent controls what each child can see (all off by default). Messages travel
   child ↔ parent, and sibling ↔ sibling through the parent. Only a verified parent can start or stop
   a child's agents. Worth building once there is a second orchestrator.
+- [ ] **Agents beyond Claude Code.** Run Codex, Cursor, opencode and other agent CLIs as resident
+  agents and workers. Today agents are Claude Code sessions, and only the `solve` worker has an
+  alternative backend. The pieces that assume Claude Code (launch flags, generated settings, hooks,
+  rate-limit detection) would each need a per-CLI adapter.
 
 ## Status
 
