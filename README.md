@@ -89,6 +89,37 @@ EngLoop sits one layer up. tmux is only its substrate, and the parts it adds are
 If you want a better place for your agents to live, use a multiplexer. If you want them to work
 as a team with delivery and verification guarantees, that is what EngLoop is for.
 
+## Crash recovery, borrowed from durable-harness
+
+At-least-once delivery means a message can come back after a crash. Before, the agent got it back
+with `redelivered: true` and nothing else: whatever it did the first time was lost with the process.
+The patterns below are adapted from [vercel-labs/durable-harness](https://github.com/vercel-labs/durable-harness),
+an experimental harness that runs each agent session as a durable workflow. EngLoop doesn't run on
+it, because that harness runs Claude Code only inside a Vercel Sandbox, routes model calls through
+the AI Gateway, and turns off subagents. EngLoop adapts the ideas to local Claude Code sessions and
+Redis Streams instead.
+
+- **A journal of every tool call.** A hook on `PreToolUse` records an intent line before each tool
+  call, and `PostToolUse` / `PostToolUseFailure` record the outcome, paired by `tool_use_id`
+  (`temp/journal/<name>.jsonl`). The orchestrator and resident agents have it; one-shot workers don't.
+- **A recovery note on redelivery.** When the poller hands out a redelivered message, it attaches
+  a summary built from that journal: calls that started but never recorded an outcome (*may have
+  taken effect, check before repeating*), and finished calls that had side effects. Read-only
+  calls are only counted. The note is capped at 6 KB.
+- **Resuming the previous session.** `node bin/agent-start.js --name <agent> --resume` reopens the
+  Claude Code session the agent had before the restart, so its context comes back too. It only does
+  this when a session was recorded and the working directory is unchanged; otherwise it starts fresh.
+  It is opt-in.
+- **Fenced worker results.** A worker's result is written only if the pool still owns that task's
+  pending entry. The ownership check and the write happen in one Lua script (`XPENDING`, then
+  `XADD`). If another consumer has claimed the task with `XAUTOCLAIM`, or it has already been
+  acknowledged, the stale result is dropped. If the check itself fails, the result is written anyway.
+
+One deliberate difference: durable-harness waits for the intent to be logged before it lets a tool
+call run. EngLoop's hook never blocks a call. A full disk or a locked file would otherwise stop every
+agent at once, for a log that is only advice to the model. So the journal can miss lines, and the
+recovery note says that a missing entry doesn't mean the call never ran.
+
 ## The web console
 
 Open `http://127.0.0.1:9969` and sign in with a key from `bin/bus-user.js`.
@@ -178,7 +209,7 @@ with `brew services`.
 | `bin/` | Entry points: bus (`serve.js`), poller (`next.js`), agent launcher (`agent-start.js`), task graphs (`graph.js`), launchd, users, … |
 | `lib/` | Queue, relay, roster, watchdog, worker pool, rooms, graph runner, done-verification, sandbox profiles, auth |
 | `web/` | The web console (vanilla JS, no build step) |
-| `hooks/` | Claude Code hooks (security check, Stop checks) |
+| `hooks/` | Claude Code hooks (security check, Stop checks, tool-call journal) |
 | `protocols/` | The identity and polling rules injected into agents each turn; `flows/` holds room flow templates |
 | `templates/` | `CLAUDE.md` and `.claude/settings.json` templates for each agent and worker type |
 | `workers/` | Worker working directories, re-rendered from `templates/` for each task |
@@ -203,6 +234,7 @@ A few tests depend on the host (tmux, macOS `sandbox-exec`) and fail elsewhere.
 **Shipped**
 
 - [x] Durable inboxes on Redis Streams, with redelivery after a crash
+- [x] Crash recovery adapted from durable-harness: tool-call journal, recovery note on redelivery, opt-in `--resume`, fenced worker results
 - [x] Resident agents in tmux, launched sandboxed with generated settings, optionally in their own git worktree
 - [x] Watchdog for silent agents and rate limits, with automatic resume after a usage-limit reset
 - [x] One-shot worker pool (`eval` / `review` / `solve` / `test`), including an alternative sandboxed backend for `solve`

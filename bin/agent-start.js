@@ -15,6 +15,7 @@
  *   node bin/agent-start.js --name probe1 --kick "你是 probe1。⛔ 不许跑任何 poller。只做一件事然后停。"
  *   node bin/agent-start.js --name dev --bypass-permissions   回滚：不带 sandbox 起（会警告）
  *   node bin/agent-start.js --name dev1 --worktree   在 ../EngLoop-worktrees/dev1 起（没有就 `git worktree add -b wt/dev1 … main`）
+ *   node bin/agent-start.js --name dev --resume      接回重启前的会话（有记录且 cwd 相同才接；否则警告、起全新会话）
  *   node bin/agent-start.js --list
  *   node bin/agent-start.js --stop dev            优雅停（等它把手上的活收尾）
  *   node bin/agent-start.js --stop dev --force    强杀（等于 kill -9）
@@ -38,9 +39,44 @@ const { provision, listTemplateFiles, fillPlaceholders, claimsIdentity, countCla
 // 「可选类型」那行的唯一出处。**不用 Object.keys(CAPABILITIES)** ——
 // 那份清单里有的类型缺模板、根本起不来（见下面调用处）。
 const discovery = require('../lib/template-discovery');
+// `--resume` 要的 session 记录（DUR1 S3）。路径和判据都在那边，这里不写第二份。
+const toolJournal = require('../lib/tool-journal');
 
 const ROOT = path.join(__dirname, '..');
 const ORCH = 'JARVIS';
+
+/**
+ * 默认 kick。**不 resume 时这句一个字都不能变**（不传参时的默认值 = 行为，见 start() 里 `--kick` 那段）。
+ *
+ * ── resume 时为什么还要发一句 kick，而且换了内容 ────────────────────────
+ *   `--resume` 只是把上下文接回来，**不会让会话自己接着跑** —— 没有一条新的用户消息，它就停在输入框上，
+ *   而 watchdog 只会看到一个不轮询的 agent。⇒ 还是要一句话把它推回循环。
+ *   照发原来那句的话，它读到的是「你是 X。进入你的循环：先报到」—— 跟上面那段上下文对不上
+ *   （上下文里它正干到一半），而且没告诉它「你刚崩过、重投的消息带着 recovery」。
+ *   ⇒ 换成「你刚被重启」那句。仍然是**最小启动任务**：只说报到、跑 poller、怎么读 recovery，不夹带具体工作。
+ *   实测（2.1.312，`-p` 模式）：`claude -p --resume <id> "<prompt>"` 会把 prompt 当成接回之后的下一条用户消息处理。
+ *   ⚠️ 交互模式下同一条命令的行为**没有实测**（在本机起交互式 claude 被权限分类器拒了）——
+ *     PR 描述里列了人工验收步骤；如果交互模式不提交位置参数，这句只是不生效，不会造成错误的动作。
+ */
+function defaultKick(name, { resumed = false } = {}) {
+  return resumed
+    ? `你是 ${name}。你刚被重启，用 --resume 接回了重启前的会话（上面是之前的上下文，那时手上的活可能做到一半）。`
+      + `先向编排者 ${ORCH} 报到（写一条 outbox 消息说你已重新上线），然后运行 poller 等待指令。`
+      + '收到 redelivered:true 的消息时，先读它的 recovery 字段、去现场核对，再决定重做还是跳过。不要做别的。'
+    : `你是 ${name}。进入你的循环：先向编排者 ${ORCH} 报到（写一条 outbox 消息说你已上线），然后运行 poller 等待指令。不要做别的。`;
+}
+
+/**
+ * tmux 里跑的那一整条命令。不带 resumeId 时跟改动前那一行**逐字节相同**（test/agent-resume.test.js 守着）。
+ * `--resume <id>` 放在 prompt 前面、其余参数原样：权限 / 模型 / `--append-system-prompt-file` 一个都不能少 ——
+ * resume 接回的是对话，不是启动参数；少一个就是「接回来的会话换了权限 / 模型 / 身份」。
+ * id 已经被 resumePlan 校验成 UUID，shellJoin 只是多一道保险。
+ */
+function claudeCommand({ permFlags, modelFlags, prompt, personaFile, resumeId = null }) {
+  const resume = resumeId ? ` ${launch.shellJoin(['--resume', resumeId])}` : '';
+  return `${launch.envUnsetPrefix()} claude ${permFlags}${modelFlags ? ` ${modelFlags}` : ''}${resume} ${JSON.stringify(prompt)}`
+    + ` --append-system-prompt-file ${JSON.stringify(personaFile)}`;
+}
 
 function arg(name, dflt) {
   const i = process.argv.indexOf(`--${name}`);
@@ -263,7 +299,24 @@ async function start() {
     + '这会让 lib/provision.js 的 claimsIdentity 判据失去分辨力 —— 它命中的可能是一处**引用**，\n'
     + '而不是真正那一行身份声明。⇒ 于是「你的身份声明被换掉了」这件事，判据再也看不见。';
 
-  const kick = arg('kick', `你是 ${name}。进入你的循环：先向编排者 ${ORCH} 报到（写一条 outbox 消息说你已上线），然后运行 poller 等待指令。不要做别的。`);
+  // ── `--resume`（opt-in，DUR1 S3）─────────────────────────────────────
+  //   有记录的 session_id ⇒ `claude --resume <id>` 接回重启前的会话；权限 / 模型 / --append-system-prompt-file 一个不变。
+  //   记录是 SessionStart hook 写的 `temp/journal/<name>.session`（为什么不从 jsonl 最后一行拿，见 lib/agent-settings.js）。
+  //   接不回（没记录 / cwd 不同 / id 不像 UUID）⇒ **打警告、起全新会话** —— 不静默失败，也不拒绝启动：
+  //   用户要的是「起一个 agent」，上下文接不回不该让它起不来。
+  //   **默认不开**：开不开成默认，等人在真机上验收过再定（PR 描述里有人工步骤）。
+  const wantResume = process.argv.includes('--resume');
+  let resumeId = null;
+  if (wantResume) {
+    const plan = toolJournal.resumePlan({ ...toolJournal.readSession(name), cwd });
+    if (plan.resume) {
+      resumeId = plan.sessionId;
+      console.log(`  ✓ --resume：接回会话 ${resumeId}（记录于 ${plan.record.at || '?'}，source=${plan.record.source || '?'}）`);
+    }
+    else console.warn(`  ⚠️  --resume 没接回：${plan.warn}`);
+  }
+
+  const kick = arg('kick', defaultKick(name, { resumed: !!resumeId }));
 
   let permFlags;
   if (bypass) {
@@ -301,8 +354,11 @@ async function start() {
     //   新会话继承的是 **tmux server** 的环境，而 `-e` 只能设不能删 ⇒ 在命令前面把
     //   Claude Code 的会话态变量剥掉（清单和理由在 lib/agent-launch.js 的 SESSION_ENV）。
     //   回滚开关也剥：那是权限的回滚，不是环境的。
-    command: `${launch.envUnsetPrefix()} claude ${permFlags}${modelFlags ? ` ${modelFlags}` : ''} ${JSON.stringify(kick + claimWarn)}`
-      + ` --append-system-prompt-file ${JSON.stringify(personaFile)}`,
+    // 拼法在 claudeCommand()（抽出来是为了单测；resume 只多一个 `--resume <id>`）。
+    command: claudeCommand({
+      permFlags, modelFlags, prompt: kick + claimWarn,
+      personaFile, resumeId,
+    }),
     // hooks/check_security.js 靠这个变量知道对面是谁。**读不到就 fail-closed
     // 拒掉一切** —— 所以它必须在这里注入，而不是指望 agent 自己设
     // （agent 在 Bash 里 export 只影响那个 shell 子进程，hook 是 claude
@@ -397,4 +453,4 @@ if (require.main === module) {
   main().catch((e) => { console.error('✗', e.message); process.exit(1); });
 }
 
-module.exports = { provision, listTemplateFiles, fillPlaceholders };
+module.exports = { provision, listTemplateFiles, fillPlaceholders, claudeCommand, defaultKick };

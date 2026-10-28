@@ -82,6 +82,25 @@ const AGENT_TYPE = process.env.ENGLOOP_AGENT_TYPE
 //   所以把它挂到每轮都会读的地方。
 const busyState = require('../lib/busy');
 const { staleAlert } = require('../lib/ack-alert');
+// ── `recovery`：重投消息附上「上一次做到哪了」（DUR1 S2）
+//
+//   日志源是**本消费者自己**的 `temp/journal/<NAME>.jsonl`（`hooks/tool_journal.js` 写，`--name` 跟这里的 NAME
+//   是同一个名字：agent 是 `agent:<name>` 推出来的那个，编排者是 JARVIS —— 跟 lib/agent-settings.js 生成配置时一致）。
+//   算法、上限、固定说明都在 lib/tool-journal.js 的 buildRecovery()。
+const toolJournal = require('../lib/tool-journal');
+
+/**
+ * ⚠️ **永远返回一个对象，不抛、不返回 undefined** —— 字段缺席会被读成「没事」。
+ *   算的时候出了任何异常 ⇒ `{ available: false, reason }`，跟「日志读不到」走同一个形状。
+ *   观测性的附加字段绝不能让轮询挂掉（同 `reactions` 那几段的纪律），也绝不能沉默。
+ */
+function recoveryFor(m) {
+  try {
+    return toolJournal.buildRecovery({ name: NAME, entryId: m.id });
+  } catch (e) {
+    return { available: false, reason: `算 recovery 时抛了异常：${String(e && e.message || e)}` };
+  }
+}
 
 /**
  * 输出 payload。
@@ -641,6 +660,11 @@ async function main() {
         text: m.text,
         timestamp: m.timestamp,
         redelivered: m.redelivered === true || undefined,
+        // ★ `recovery`：**只给重投的消息**（新消息没有「上一次」）。重投时**一定出现** ——
+        //   日志读不到也给 `{available:false, reason}`，不省略（见 recoveryFor 头注）。
+        //   时间窗起点是这条流条目 id 的毫秒时间戳（≤ 首次投递时刻 ⇒ 只会多算、不会漏）。
+        //   字节有上限（lib/tool-journal.js 的 RECOVERY_MAX_BYTES）：这份 JSON 的前 2048 字节是 agent 唯一保证看得见的部分。
+        recovery: m.redelivered === true ? recoveryFor(m) : undefined,
         // 房间消息必须带上 room_hash —— 否则大脑不知道往哪回。
         // 回房间要写 {"room_hash":...}；写 {"username":...} 只会私聊，
         // 房间里其他人永远看不到，而且没有任何报错。

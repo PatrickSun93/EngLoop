@@ -101,8 +101,8 @@ console.log('\n【4】trust：按 git 根精确匹配，不看祖先');
 console.log('\n【5】agent-start 不再默认 bypass');
 {
   const src = fs.readFileSync(path.join(__dirname, '..', 'bin', 'agent-start.js'), 'utf8');
-  // 命令前面多了 `env -u …` 前缀（剥掉会话态环境变量）。
-  const line = src.split('\n').find((l) => /command: `\$\{launch\.envUnsetPrefix\(\)\} claude /.test(l));
+  // 命令前面多了 `env -u …` 前缀（剥掉会话态环境变量）。拼法在 claudeCommand() 里（DUR1 S3 抽出来的，`return` 那一行）。
+  const line = src.split('\n').find((l) => /return `\$\{launch\.envUnsetPrefix\(\)\} claude /.test(l));
   ok(line && !line.includes('--dangerously-skip-permissions') && line.includes('${permFlags}'),
     '启动命令走 permFlags，不写死 bypass', line && line.trim());
   ok(/includes\('--bypass-permissions'\)/.test(src), 'bypass 只能通过显式的 --bypass-permissions 拿到');
@@ -155,7 +155,9 @@ console.log('\n【7】三种 kind 都挂 StopFailure（编排者也挂），matc
     ok(h && h.type === 'command' && h.timeout === 10, `${c.kind}/${c.name}：type command，timeout 10`);
   }
   const o = S.buildAgentSettings({ kind: 'orchestrator', name: 'JARVIS', type: 'orchestrator', cwd: R, root: R });
-  ok(!o.hooks.PreToolUse && !o.hooks.Stop, '★ 编排者**仍然没有** PreToolUse（也没有 Stop）—— StopFailure 是唯一的例外', JSON.stringify(Object.keys(o.hooks)));
+  // 编排者的例外有两个：StopFailure 和工具调用日志（【8】）。要守的照旧：没有 check_security、没有 Stop。
+  ok(!JSON.stringify(o.hooks).includes('check_security') && !o.hooks.Stop,
+    '★ 编排者**仍然没有** check_security（也没有 Stop）—— 例外只有 StopFailure 和 journal', JSON.stringify(Object.keys(o.hooks)));
   const odd = S.buildAgentSettings({ kind: 'crew', name: "a'b $(x)", type: 'dev', cwd: CWD, root: R });
   ok(odd.hooks.StopFailure[0].hooks[0].command.endsWith(`--name 'a'\\''b $(x)'`),
     '不合格的名字被单引号整个引起来（shell 不展开 $()；hook 自己再按 NAME_RE 拒）', odd.hooks.StopFailure[0].hooks[0].command);
@@ -163,6 +165,50 @@ console.log('\n【7】三种 kind 都挂 StopFailure（编排者也挂），matc
   const j = JSON.parse(fs.readFileSync(writeCrewSettings({ name: 'dev', type: 'dev', cwd: CWD, root }), 'utf8'));
   ok(j.hooks.StopFailure && j.hooks.StopFailure[0].matcher === 'rate_limit', '落盘的那份里也有');
   fs.rmSync(root, { recursive: true, force: true });
+}
+
+console.log('\n【8】工具调用日志（DUR1）：crew 和编排者挂，worker 不挂；编排者仍然没有 check_security');
+{
+  const S = require('../lib/agent-settings');
+  const R = '/fake/engloop';
+  const JRE = /^node "([^"]+)" --event (\S+) --name (\S+)$/;
+  /** 某个事件上挂着的 journal 条目（matcher ＋ 解析出来的命令），没有 ⇒ [] */
+  const journalOn = (s, ev) => (s.hooks[ev] || []).flatMap((e) => e.hooks.map((h) => ({ matcher: e.matcher, h, m: JRE.exec(h.command) })))
+    .filter((x) => x.m && x.m[1] === '/fake/engloop/hooks/tool_journal.js');
+  const want = { PreToolUse: 'intent', PostToolUse: 'outcome', PostToolUseFailure: 'failure' };
+  for (const c of [
+    { kind: 'crew', name: 'dev', type: 'dev', cwd: CWD },
+    { kind: 'crew', name: 't1', type: 'test', cwd: CWD },
+    { kind: 'orchestrator', name: 'JARVIS', type: 'orchestrator', cwd: R },
+  ]) {
+    const s = S.buildAgentSettings({ ...c, root: R });
+    for (const [ev, event] of Object.entries(want)) {
+      const js = journalOn(s, ev);
+      ok(js.length === 1 && js[0].matcher === '*' && js[0].m[2] === event && js[0].h.type === 'command' && js[0].h.timeout === 5,
+        `${c.kind}/${c.name}：${ev} 挂了 journal（matcher *，--event ${event}，timeout 5）`, JSON.stringify(s.hooks[ev]));
+      ok(js.length === 1 && js[0].m[3] === c.name, `${c.kind}/${c.name}：${ev} 的 journal --name 是它自己的名字`, js[0] && js[0].m[3]);
+    }
+  }
+  const crew = S.buildAgentSettings({ kind: 'crew', name: 'dev', type: 'dev', cwd: CWD, root: R });
+  ok(/check_security\.js/.test(crew.hooks.PreToolUse[0].hooks[0].command) && crew.hooks.PreToolUse.length === 2,
+    'crew：PreToolUse[0] 仍是 check_security，journal 排在它后面（并行跑，顺序不影响结论）', JSON.stringify(crew.hooks.PreToolUse));
+  const ss = journalOn(crew, 'SessionStart');
+  ok(ss.length === 1 && ss[0].m[2] === 'session' && ss[0].m[3] === 'dev', 'crew：SessionStart 挂了 journal（--event session，给 --resume 记 session_id）', JSON.stringify(crew.hooks.SessionStart));
+
+  const o = S.buildAgentSettings({ kind: 'orchestrator', name: 'JARVIS', type: 'orchestrator', cwd: R, root: R });
+  ok(!JSON.stringify(o.hooks).includes('check_security'), '★ 编排者**仍然没有** check_security（PreToolUse 上只有 journal）', JSON.stringify(o.hooks.PreToolUse));
+  ok((o.hooks.PreToolUse || []).length === 1, '编排者的 PreToolUse 只有一个条目（journal）');
+  ok(!o.hooks.SessionStart, '编排者不挂 SessionStart（--resume 只在 agent-start 上；根 .claude/settings.json 的压缩补回不受影响）');
+
+  for (const type of ['review', 'solve']) {
+    const w = S.buildAgentSettings({ kind: 'worker', name: `worker-${type}`, type, cwd: '/proj', root: R });
+    ok(!JSON.stringify(w.hooks).includes('tool_journal') && !w.hooks.PostToolUse && !w.hooks.PostToolUseFailure && !w.hooks.SessionStart,
+      `★ worker **没挂** journal（${type}）`, JSON.stringify(Object.keys(w.hooks)));
+    ok(/check_security\.js/.test(w.hooks.PreToolUse[0].hooks[0].command) && w.hooks.PreToolUse.length === 1, `worker（${type}）的 PreToolUse 仍然只有 check_security`);
+  }
+
+  const odd = S.buildAgentSettings({ kind: 'crew', name: "a'b $(x)", type: 'dev', cwd: CWD, root: R });
+  ok(odd.hooks.PostToolUse[0].hooks[0].command.endsWith(`--name 'a'\\''b $(x)'`), '不合格的名字被单引号整个引起来（hook 自己再按 NAME_RE 拒）');
 }
 
 console.log(`\n  通过 ${pass} · 失败 ${fail}`);

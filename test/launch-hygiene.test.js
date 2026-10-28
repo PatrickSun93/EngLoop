@@ -127,10 +127,11 @@ async function main() {
       '★ deny 还在：自己的启动配置、根 .claude/（只拦 Write / Edit 工具 —— 没有 sandbox，拦不住 Bash，防手滑）');
     ok(AS.GIT_DENY.every((r) => p.deny.includes(r)) && p.deny.includes('Read(//fake/engloop/.env)'),
       'git 基线和 .env 都在 deny 里');
-    // 编排者**只**多挂一个 StopFailure —— 「编排者没有 hook」那条规则唯一的例外。
-    //   要守的东西（不挂 check_security / Stop）照旧守住，只是把那唯一的例外写明。
-    ok(Object.keys(s.hooks).join(',') === 'StopFailure' && !s.hooks.PreToolUse && !s.hooks.Stop,
-      '不挂 check_security / Stop（挂上去会改它的 Bash 纪律）—— 只有 StopFailure', JSON.stringify(Object.keys(s.hooks)));
+    // 编排者的 hook 只有两个例外：StopFailure ＋ 工具调用日志（PreToolUse / PostToolUse / PostToolUseFailure，DUR1）。
+    //   要守的东西（不挂 check_security / Stop）照旧守住，只是把例外逐个写明 —— 多出任何一个 key 都红。
+    ok(Object.keys(s.hooks).sort().join(',') === 'PostToolUse,PostToolUseFailure,PreToolUse,StopFailure'
+      && !JSON.stringify(s.hooks).includes('check_security') && !s.hooks.Stop,
+    '不挂 check_security / Stop（挂上去会改它的 Bash 纪律）—— 只有 StopFailure 和 journal', JSON.stringify(Object.keys(s.hooks)));
     ok(p.allow.includes('Edit(//fake/engloop/temp/outbox/JARVIS/**)'), '能写自己的 outbox');
     let threw = 0;
     for (const bad of [{ kind: 'orch' }, { kind: 'orchestrator', type: 'dev' }, { kind: 'crew', type: 'orchestrator' }]) {
@@ -285,6 +286,48 @@ async function main() {
     const r2 = spawnSync(process.execPath, [path.join(ROOT, 'bin', 'agent-start.js'), '--name', CREW, '--worktree', '--cwd', '/tmp'],
       { env: childEnv, encoding: 'utf8', timeout: 20000 });
     ok(r2.status === 1 && /--worktree 和 --cwd 只能给一个/.test(r2.stderr), '--worktree 和 --cwd 一起给 ⇒ 拒绝（说清为什么）', r2.stderr);
+  }
+
+  // ── DUR1 S3：`--resume` 真跑（同一个私有 tmux ＋ 假 claude；session 记录写在临时的 ENGLOOP_JOURNAL_DIR）──
+  //   判据都从**假 claude 自己收到的 argv** 里读：`--resume <id>` 在不在、其余参数是不是原样、prompt 是哪一句。
+  console.log('\n【7b】agent-start --resume：接回 / cwd 不同 ⇒ 警告 ＋ 全新会话 / 不带参数 ⇒ 不接回');
+  {
+    const JDIR = path.join(TMP, 'journal');
+    fs.mkdirSync(JDIR, { recursive: true });
+    const SID = '98240ccc-f28e-421d-ab27-079d390d5758';
+    const realCwd = fs.realpathSync(crewCwd);
+    const writeSession = (cwd) => fs.writeFileSync(path.join(JDIR, `${CREW}.session`),
+      JSON.stringify({ session_id: SID, cwd, source: 'startup', at: new Date().toISOString() }));
+    const startOnce = async (extra) => {
+      const t0 = Date.now();
+      const r = spawnSync(process.execPath, [path.join(ROOT, 'bin', 'agent-start.js'), '--name', CREW, '--type', 'dev', '--cwd', realCwd, ...extra],
+        { env: { ...childEnv, ENGLOOP_JOURNAL_DIR: JDIR }, encoding: 'utf8', timeout: 60000 });
+      const rec = await waitRecord(t0, 5000);
+      tmuxRun(['kill-session', '-t', roster.sessionFor(CREW, 'dev')]);
+      await roster.unregister(redis, CREW).catch(() => {});
+      return { r, a: rec ? rec.argv : [] };
+    };
+    // 一条命令里 positional 的那个参数（kick）：紧挨在 --append-system-prompt-file 前面
+    const promptOf = (a) => a[a.indexOf('--append-system-prompt-file') - 1] || '';
+
+    writeSession(realCwd);
+    const yes = await startOnce(['--resume']);
+    ok(yes.r.status === 0 && argAfter(yes.a, '--resume') === SID, '★ --resume ⇒ argv 里有 `--resume <记录的 id>`', `${yes.r.stdout.slice(-300)} ${JSON.stringify(yes.a)}`);
+    ok(argAfter(yes.a, '--model') === caps.modelFor('dev') && argAfter(yes.a, '--permission-mode') === 'dontAsk'
+      && argAfter(yes.a, '--settings') === path.join(SETTINGS_DIR, `${CREW}.json`)
+      && argAfter(yes.a, '--append-system-prompt-file') === path.join(realCwd, 'CLAUDE.md'),
+    'resume 时权限 / 模型 / --append-system-prompt-file 一个不少', JSON.stringify(yes.a));
+    ok(/重启/.test(promptOf(yes.a)) && /recovery/.test(promptOf(yes.a)), 'resume 时 kick 换成「你刚被重启，先看 recovery」', promptOf(yes.a));
+
+    writeSession('/somewhere/else/entirely');
+    const other = await startOnce(['--resume']);
+    ok(other.r.status === 0 && !other.a.includes('--resume') && other.a.length > 0, 'cwd 不同 ⇒ 不带 --resume，照常起全新会话', JSON.stringify(other.a));
+    ok(/--resume 没接回/.test(other.r.stderr) && other.r.stderr.includes('/somewhere/else/entirely'), 'cwd 不同 ⇒ 打警告（说出记录的 cwd）', other.r.stderr.slice(-400));
+    ok(/进入你的循环/.test(promptOf(other.a)), '退回全新会话 ⇒ kick 是默认那句', promptOf(other.a));
+
+    writeSession(realCwd);
+    const off = await startOnce([]);
+    ok(off.r.status === 0 && !off.a.includes('--resume') && off.a.length > 0, '★ 不带 --resume ⇒ 不接回（opt-in，默认不开）', JSON.stringify(off.a));
   }
 
   console.log('\n【8】orch-start：真跑一次（私有 tmux ＋ 假 claude ＋ 测试库）');

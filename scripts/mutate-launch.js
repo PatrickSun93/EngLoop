@@ -52,7 +52,7 @@ const MUTANTS = [
     expect: '某一格没写 model ⇒ 抛' },
   // ── 环境变量 ──
   { id: 'L8', what: 'agent-start：命令不带 env -u 前缀',
-    file: 'bin/agent-start.js', from: 'command: `${launch.envUnsetPrefix()} claude ', to: 'command: `claude ',
+    file: 'bin/agent-start.js', from: 'return `${launch.envUnsetPrefix()} claude ', to: 'return `claude ',
     expect: 'CLAUDECODE 没了（tmux server 里有）' },
   { id: 'L9', what: 'worker-runner：print 路径透传 process.env',
     file: 'lib/worker-runner.js', from: 'env: launch.stripSessionEnv(process.env, ', to: 'env: Object.assign({}, process.env, ',
