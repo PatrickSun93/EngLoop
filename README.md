@@ -106,10 +106,11 @@ Redis Streams instead.
   a summary built from that journal: calls that started but never recorded an outcome (*may have
   taken effect, check before repeating*), and finished calls that had side effects. Read-only
   calls are only counted. The note is capped at 6 KB.
-- **Resuming the previous session.** `node bin/agent-start.js --name <agent> --resume` reopens the
-  Claude Code session the agent had before the restart, so its context comes back too. It only does
-  this when a session was recorded and the working directory is unchanged; otherwise it starts fresh.
-  It is opt-in.
+- **Resuming the previous session.** By default, `node bin/agent-start.js --name <agent>` reopens
+  the Claude Code session the agent had before the restart, so its context comes back too. It
+  resumes only when a session was recorded, its transcript still exists, and the working directory
+  and agent type are unchanged. Otherwise it prints a warning and starts fresh. Pass `--fresh` to
+  start a new session on purpose.
 - **Fenced worker results.** A worker's result is written only if the pool still owns that task's
   pending entry. The ownership check and the write happen in one Lua script (`XPENDING`, then
   `XADD`). If another consumer has claimed the task with `XAUTOCLAIM`, or it has already been
@@ -234,7 +235,7 @@ A few tests depend on the host (tmux, macOS `sandbox-exec`) and fail elsewhere.
 **Shipped**
 
 - [x] Durable inboxes on Redis Streams, with redelivery after a crash
-- [x] Crash recovery adapted from durable-harness: tool-call journal, recovery note on redelivery, opt-in `--resume`, fenced worker results
+- [x] Crash recovery adapted from durable-harness: tool-call journal, recovery note on redelivery, resuming the previous session on restart, fenced worker results
 - [x] Resident agents in tmux, launched sandboxed with generated settings, optionally in their own git worktree
 - [x] Watchdog for silent agents and rate limits, with automatic resume after a usage-limit reset
 - [x] One-shot worker pool (`eval` / `review` / `solve` / `test`), including an alternative sandboxed backend for `solve`

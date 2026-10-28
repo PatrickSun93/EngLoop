@@ -354,6 +354,14 @@ async function main() {
     ok(/agent-start/.test(crew) && /dev/.test(crew),
       '★ agent 那套给的是 agent-start，且点名了是哪个 agent', JSON.stringify(crew.slice(-120)));
 
+    // DUR3：agent-start 默认接回 ⇒ 「加 --resume 才接回」那句过时了；退路是 --fresh
+    ok(/--fresh/.test(crew) && /默认接回/.test(crew) && !/--resume/.test(crew),
+      '★ DUR3：agent 那套说清「重启默认接回」，接回后还失聪 ⇒ --fresh（不再提 --resume）', JSON.stringify(crew.slice(-160)));
+    // 失聪的 f 来自 classifySessions：只有会话名、花名册记录没了 ⇒ type 是 'unknown' ⇒ 重启命令不带 --type（不猜成 dev）
+    const deafUnknown = watchdog.deafAlertText({ name: 'rv', type: 'unknown', tmux_session: 'agent_rv' });
+    ok(/agent-start\.js --name rv/.test(deafUnknown) && !/--type/.test(deafUnknown),
+      '★ DUR3：失聪时 type 不可信（unknown）⇒ 重启命令不带 --type', JSON.stringify(deafUnknown.slice(-200)));
+
     // ★ 阴性对照：agent 那套**保留**「出现在你这里」—— 对它是成立的
     //   （agent 掉册时，别人发给它的消息经 relay 的 resolveTarget 会被当成人）。
     //   缺了这条，一个「两套都删掉那句」的实现也能过上面那条。

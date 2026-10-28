@@ -100,6 +100,22 @@ async function main() {
   for (let i = 0; i < fields.length; i += 2) obj[fields[i]] = fields[i + 1];
   ok(/watchdog/.test(obj.from), '发信人是 watchdog');
   ok(/重启/.test(obj.text), '告警里带了恢复命令');
+  // DUR3：agent-start 默认接回 ⇒ 文案不再教人「加 --resume 才接回」，而是给出 --fresh 这条退路；
+  //   重启命令带上花名册里的类型（不带的话 agent-start 默认 --type dev，非 dev 的 agent 会被改成 dev）
+  ok(/--fresh/.test(obj.text) && /默认接回/.test(obj.text) && !/加 --resume/.test(obj.text),
+    '★ DUR3：告警说清「重启默认接回」，退路是 --fresh（不再说「加 --resume 才接回」）', obj.text);
+  ok(obj.text.includes('node bin/agent-start.js --name wdtest --type dev'),
+    '★ DUR3：重启命令带上花名册里的类型 --type dev', obj.text);
+  await redis.del(OUT_T);
+  await wd.act(redis, [{
+    name: 'wdtest', type: 'unknown', tmux_session: 'nope',
+    idleMs: wd.ALERT_MS + 1000, pending: 3, level: 'alert', stream: S, group: G,
+  }], { onLog: () => {}, outStream: OUT_T });
+  const row2 = await redis.xrange(OUT_T, '-', '+');
+  const obj2 = {}; const fields2 = row2[0] ? row2[0][1] : [];
+  for (let i = 0; i < fields2.length; i += 2) obj2[fields2[i]] = fields2[i + 1];
+  ok(/agent-start\.js --name wdtest/.test(obj2.text || '') && !/--type/.test(obj2.text || ''),
+    'DUR3：花名册里类型是 unknown ⇒ 重启命令不带 --type（不猜）', obj2.text);
 
   console.log('\n【5】tmux 会话不在时不硬推');
   let logged = '';

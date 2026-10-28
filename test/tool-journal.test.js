@@ -141,14 +141,21 @@ console.log('\n【4】写失败 / 坏输入 ⇒ 退出码 0 且 stdout 为空（
 console.log('\n【5】SessionStart ⇒ <name>.session（整份覆盖，给 --resume 用）');
 {
   const dir = path.join(TMP, 'sess');
-  const ss = (sid, source) => ({ session_id: sid, transcript_path: '/x.jsonl', cwd: '/w/dev', hook_event_name: 'SessionStart', source });
-  const r1 = runHook(['--event', 'session', '--name', 'dev'], ss(SID, 'startup'), dir);
+  const ss = (sid, source) => ({ session_id: sid, transcript_path: `/p/${sid}.jsonl`, cwd: '/w/dev', hook_event_name: 'SessionStart', source });
+  const r1 = runHook(['--event', 'session', '--name', 'dev', '--type', 'review'], ss(SID, 'startup'), dir);
   const SID2 = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
-  const r2 = runHook(['--event', 'session', '--name', 'dev'], ss(SID2, 'clear'), dir);
+  const r2 = runHook(['--event', 'session', '--name', 'dev', '--type', 'dev'], ss(SID2, 'clear'), dir);
   ok(r1.status === 0 && r1.stdout === '' && r2.status === 0 && r2.stdout === '', 'exit 0、stdout 空');
   const rec = JSON.parse(fs.readFileSync(path.join(dir, 'dev.session'), 'utf8'));
   ok(rec.session_id === SID2 && rec.cwd === '/w/dev' && rec.source === 'clear' && typeof rec.at === 'string',
     '后一次覆盖前一次（/clear 换了新 id ⇒ 记的是新的）', JSON.stringify(rec));
+  // DUR3：resumePlan 的两条新判据要的字段 —— transcript_path 原样取自 stdin，type 取自命令行的 --type
+  ok(rec.transcript_path === `/p/${SID2}.jsonl`, '★ transcript_path 原样存下（取自 SessionStart 的 stdin，不自己推）', JSON.stringify(rec));
+  ok(rec.type === 'dev', '★ type 存的是命令行 --type 的值（后一次覆盖前一次：review ⇒ dev）', JSON.stringify(rec));
+  runHook(['--event', 'session', '--name', 'old'], ss(SID, 'startup'), dir);
+  let oldRec = null;
+  try { oldRec = JSON.parse(fs.readFileSync(path.join(dir, 'old.session'), 'utf8')); } catch { /* 下面报 */ }
+  ok(oldRec && oldRec.type === null && oldRec.session_id === SID, '命令行没给 --type（旧配置）⇒ type:null，别的照记', JSON.stringify(oldRec));
   ok(!fs.existsSync(path.join(dir, 'dev.jsonl')), 'session 事件不往 jsonl 里写');
   ok(fs.readdirSync(dir).every((f) => !f.includes('.tmp-')), '没有留下临时文件');
 }

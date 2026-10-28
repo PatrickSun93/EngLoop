@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * DUR1（工具调用日志 · 重投 recovery · `--resume`）的**源码级内存变异**：把关键一行在内存里删掉 / 改掉，
+ * DUR1（工具调用日志 · 重投 recovery · `--resume`）＋ DUR3（默认接回 · `--fresh` · transcript / type 判据）的**源码级内存变异**：把关键一行在内存里删掉 / 改掉，
  * 要求指定测试里**指定的那条**判据变红。一个字节都不落盘（`scripts/_srcmut-hook.js`）。
  * 判档同 `scripts/mutate-launch.js`：
  *   ✅ killed   指定的那条出现在 `✗` 行里，且跑到了总结行
@@ -28,6 +28,8 @@ const T_REC = 'test/tool-journal-recovery.test.js';
 const T_SET = 'test/agent-settings.test.js';
 const T_RES = 'test/agent-resume.test.js';
 const T_LH = 'test/launch-hygiene.test.js';
+const T_WD = 'test/watchdog.test.js';
+const T_WDE = 'test/watchdog-events.test.js';
 
 const MUTANTS = [
   // ── S1 写入 ──
@@ -72,7 +74,7 @@ const MUTANTS = [
     file: 'lib/agent-settings.js', test: T_SET, from: "    hooks.PostToolUseFailure = [journalEntry('failure')];\n", to: '',
     expect: 'PostToolUseFailure 挂了 journal' },
   { id: 'D14', what: 'agent-settings：journal 的 --name 写成固定值（冒名）',
-    file: 'lib/agent-settings.js', test: T_SET, from: '--name ${shellJoin([name])}`;\n  const journalEntry', to: "--name dev`;\n  const journalEntry",
+    file: 'lib/agent-settings.js', test: T_SET, from: "--name ${shellJoin([name])}`\n    + (event === 'session'", to: "--name dev`\n    + (event === 'session'",
     expect: '--name 是它自己的名字' },
   // ── S2 ──
   { id: 'D15', what: 'recovery：删掉「没有 outcome」那一支（全当成已完成）',
@@ -127,15 +129,70 @@ const MUTANTS = [
   { id: 'D31', what: 'defaultKick：resume 时还发原来那句',
     file: 'bin/agent-start.js', test: T_RES, from: '  return resumed\n', to: '  return false\n',
     expect: 'resume ⇒ 说明刚被重启' },
-  { id: 'D32', what: 'agent-start：--resume 不生效（判据算了，结果没进命令）',
+  { id: 'D32', what: 'agent-start：接回不生效（判据算了，结果没进命令）',
     file: 'bin/agent-start.js', test: T_LH, from: '    personaFile, resumeId,\n', to: '    personaFile, resumeId: null,\n',
-    expect: '★ --resume ⇒ argv 里有 `--resume <记录的 id>`' },
-  { id: 'D33', what: 'agent-start：cwd 不同时静默退回（不打警告）',
-    file: 'bin/agent-start.js', test: T_LH, from: '    else console.warn(`  ⚠️  --resume 没接回：${plan.warn}`);', to: '',
+    expect: '★ 不带参数（DUR3 默认）⇒ argv 里有 `--resume <记录的 id>`' },
+  { id: 'D33', what: 'agent-start：接不回时静默退回（不打警告）',
+    file: 'bin/agent-start.js', test: T_LH, from: '    else console.warn(`  ⚠️  没接回重启前的会话：${plan.warn}`);', to: '',
     expect: 'cwd 不同 ⇒ 打警告' },
-  { id: 'D34', what: 'agent-start：不带 --resume 也接回（不再是 opt-in）',
-    file: 'bin/agent-start.js', test: T_LH, from: "  const wantResume = process.argv.includes('--resume');", to: '  const wantResume = true;',
-    expect: '不带 --resume ⇒ 不接回' },
+  // ── DUR3 ── 原来的 D34（「不带 --resume 也接回」）现在是正确行为 ⇒ 换成反方向的几条
+  { id: 'D34', what: 'agent-start：默认不接回（退回 DUR1 的 opt-in）',
+    file: 'bin/agent-start.js', test: T_LH, from: '  if (!flags.fresh) {', to: "  if (process.argv.includes('--resume')) {",
+    expect: '★ 不带参数（DUR3 默认）⇒ argv 里有' },
+  { id: 'D35', what: 'agent-start：--fresh 被忽略（照样读记录、接回）',
+    file: 'bin/agent-start.js', test: T_LH, from: '  if (!flags.fresh) {', to: '  if (true) {',
+    expect: '★ --fresh ⇒ 记录在也不接回' },
+  { id: 'D36', what: 'resumePlan：不查 transcript 在不在',
+    file: 'lib/tool-journal.js', test: T_RES, from: '  if (!path.isAbsolute(record.transcript_path) || !fs.existsSync(record.transcript_path)) {', to: '  if (false) {',
+    expect: '★ transcript 不在 ⇒ 不接回' },
+  { id: 'D37', what: 'resumePlan：旧格式记录（没有 transcript_path）也接回',
+    file: 'lib/tool-journal.js', test: T_RES, from: "    return { resume: false, warn: '旧格式记录（", to: "    return { resume: true, sessionId: record.session_id, record, warn: '旧格式记录（",
+    expect: '★ 旧格式记录' },
+  { id: 'D38', what: 'resumePlan：不比 type',
+    file: 'lib/tool-journal.js', test: T_RES, from: "  if (typeof record.type === 'string' && typeof type === 'string' && record.type !== type) {", to: '  if (false) {',
+    expect: '★ 记录是 review、这次是 dev' },
+  { id: 'D39', what: 'agent-start：不把这次的 type 交给 resumePlan（判据在，接线断了）',
+    file: 'bin/agent-start.js', test: T_LH, from: 'toolJournal.resumePlan({ ...toolJournal.readSession(name), cwd, type });', to: 'toolJournal.resumePlan({ ...toolJournal.readSession(name), cwd });',
+    expect: 'type 不同（记录是 review，这次 --type dev） ⇒ 不带 --resume' },
+  { id: 'D40', what: 'agent-settings：SessionStart 的 hook 命令不带 --type',
+    file: 'lib/agent-settings.js', test: T_SET, from: "    + (event === 'session' ? ` --type ${shellJoin([type])}` : '');", to: ";",
+    expect: '★ crew/dev：SessionStart 的 journal 带 --type dev' },
+  { id: 'D41', what: 'agent-settings：--type 写死成 dev',
+    file: 'lib/agent-settings.js', test: T_SET, from: "    + (event === 'session' ? ` --type ${shellJoin([type])}` : '');", to: "    + (event === 'session' ? ' --type dev' : '');",
+    expect: '★ crew/t1（type test）：SessionStart 带 --type test' },
+  { id: 'D42', what: 'hook：命令行的 --type 没交给 record',
+    file: 'hooks/tool_journal.js', test: T_HOOK, from: "{ name: argValue('--name'), type: argValue('--type') }", to: "{ name: argValue('--name') }",
+    expect: '★ type 存的是命令行 --type 的值' },
+  { id: 'D43', what: 'writeSession：不存 transcript_path',
+    file: 'lib/tool-journal.js', test: T_HOOK, from: '    transcript_path: str(input.transcript_path, 4096),\n', to: '',
+    expect: '★ transcript_path 原样存下' },
+  { id: 'D44', what: 'resumeFlags：--resume --fresh 一起给不报错（--fresh 赢）',
+    file: 'bin/agent-start.js', test: T_RES, from: "  if (fresh && argv.includes('--resume')) {", to: '  if (false) {',
+    expect: '★ --resume --fresh ⇒ error' },
+  { id: 'D45', what: 'agent-start：resumeFlags 报了错，start() 没理（照常起）',
+    file: 'bin/agent-start.js', test: T_LH, from: '  if (flags.error) { console.error(`✗ ${flags.error}`); process.exit(1); }', to: '',
+    expect: '★ --resume --fresh ⇒ 非 0 退出' },
+  { id: 'D46', what: 'agent-start：kick 按「想不想接」选，不按「接没接上」（接不回时也说「你用 --resume 接回了」）',
+    file: 'bin/agent-start.js', test: T_LH, from: '{ resumed: !!resumeId }', to: '{ resumed: !flags.fresh }',
+    expect: '★ transcript 已不在 ⇒ kick 是不接回那句' },
+  // ── DUR3 · watchdog 的重启提示（agent-start 默认接回之后，旧文案「加 --resume 才接回」就错了）──
+  { id: 'D47', what: 'watchdog：重启提示还是 DUR1 那句「加 --resume」（失聪那条）',
+    file: 'lib/watchdog.js', test: T_WDE, from: "const RESTART_RESUME_NOTE = '（重启默认接回它停之前的会话；接回后还是失聪，就在第二条末尾加 --fresh，从全新会话开始）';",
+    to: "const RESTART_RESUME_NOTE = '（想接回它重启前的上下文：第二条末尾加 --resume）';",
+    expect: '★ DUR3：agent 那套说清「重启默认接回」' },
+  { id: 'D48', what: 'watchdog：重启提示还是 DUR1 那句「加 --resume」（ESC 之后仍无活动那条）',
+    file: 'lib/watchdog.js', test: T_WD, from: "const RESTART_RESUME_NOTE = '（重启默认接回它停之前的会话；接回后还是失聪，就在第二条末尾加 --fresh，从全新会话开始）';",
+    to: "const RESTART_RESUME_NOTE = '（想接回它重启前的上下文：第二条末尾加 --resume）';",
+    expect: '★ DUR3：告警说清「重启默认接回」' },
+  { id: 'D49', what: 'watchdog：重启命令不带 --type（非 dev 的 agent 照提示重启会变成 dev）',
+    file: 'lib/watchdog.js', test: T_WD, from: "${t ? ` --type ${t}` : ''}`;", to: '`;',
+    expect: '★ DUR3：重启命令带上花名册里的类型 --type dev' },
+  { id: 'D50', what: 'watchdog：type 不可信时猜成 dev（失聪那条）',
+    file: 'lib/watchdog.js', test: T_WDE, from: "capabilities.isKnownType(f.type) ? f.type : null;", to: "capabilities.isKnownType(f.type) ? f.type : 'dev';",
+    expect: '★ DUR3：失聪时 type 不可信（unknown）⇒ 重启命令不带 --type' },
+  { id: 'D51', what: 'watchdog：type 不可信时猜成 dev（花名册里是 unknown 的 alert）',
+    file: 'lib/watchdog.js', test: T_WD, from: "capabilities.isKnownType(f.type) ? f.type : null;", to: "capabilities.isKnownType(f.type) ? f.type : 'dev';",
+    expect: 'DUR3：花名册里类型是 unknown ⇒ 重启命令不带 --type' },
 ];
 
 function runOne(m) {

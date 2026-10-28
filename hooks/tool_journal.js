@@ -8,7 +8,7 @@
  * 命令里写死 `--event <intent|outcome|failure|session>` 和 `--name <agent 名>`（生成配置时写进去；
  * agent 改不了自己的配置，冒不了别人的名）：
  *   PreToolUse ⇒ intent · PostToolUse ⇒ outcome(ok:true) · PostToolUseFailure ⇒ outcome(ok:false)
- *   SessionStart（只给 crew）⇒ 覆盖写 `<name>.session`，给 `agent-start --resume` 用
+ *   SessionStart（只给 crew，命令多带一个 `--type <类型>`）⇒ 覆盖写 `<name>.session`，给 agent-start 判断接不接回会话用
  * 格式、路径、轮转、截断都在 `lib/tool-journal.js` 的 `record()`；这里只读 stdin、调它、吞掉一切异常。
  *
  * ── 照 `hooks/stop_failure.js` 的做法 ──────────────────────────────────
@@ -31,7 +31,8 @@ function argValue(flag) {
 function main() {
   const raw = fs.readFileSync(0, 'utf8');
   const input = JSON.parse(raw);   // 垃圾 stdin ⇒ 抛 ⇒ 下面吞掉
-  require('../lib/tool-journal').record(argValue('--event'), input, { name: argValue('--name') });
+  // `--type` 只有 SessionStart 那条命令带（DUR3，给 resumePlan 的「类型变了不接回」）；别的事件没有 ⇒ null，record 不用它。
+  require('../lib/tool-journal').record(argValue('--event'), input, { name: argValue('--name'), type: argValue('--type') });
 }
 
 if (require.main === module) {

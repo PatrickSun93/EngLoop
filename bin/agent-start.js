@@ -15,7 +15,11 @@
  *   node bin/agent-start.js --name probe1 --kick "你是 probe1。⛔ 不许跑任何 poller。只做一件事然后停。"
  *   node bin/agent-start.js --name dev --bypass-permissions   回滚：不带 sandbox 起（会警告）
  *   node bin/agent-start.js --name dev1 --worktree   在 ../EngLoop-worktrees/dev1 起（没有就 `git worktree add -b wt/dev1 … main`）
- *   node bin/agent-start.js --name dev --resume      接回重启前的会话（有记录且 cwd 相同才接；否则警告、起全新会话）
+ *   node bin/agent-start.js --name dev               **默认接回**重启前的会话（DUR3）：有记录、cwd 和 --type 相同、
+ *                                                    transcript 还在才接；否则警告、起全新会话
+ *   node bin/agent-start.js --name dev --fresh       明确起全新会话（会话卡死 / 上下文坏了 / 就是想从头来）：不读记录、不警告
+ *   node bin/agent-start.js --name dev --resume      等于默认（DUR1 时是 opt-in，手指和文档里还写着它，继续接受）
+ *                                                    `--resume --fresh` 一起给 ⇒ 报错退出，不猜
  *   node bin/agent-start.js --list
  *   node bin/agent-start.js --stop dev            优雅停（等它把手上的活收尾）
  *   node bin/agent-start.js --stop dev --force    强杀（等于 kill -9）
@@ -46,7 +50,7 @@ const ROOT = path.join(__dirname, '..');
 const ORCH = 'JARVIS';
 
 /**
- * 默认 kick。**不 resume 时这句一个字都不能变**（不传参时的默认值 = 行为，见 start() 里 `--kick` 那段）。
+ * 默认 kick。**不接回时这句一个字都不能变**（`--fresh`、以及接不回退回全新会话时都是它；见 start() 里 `--kick` 那段）。
  *
  * ── resume 时为什么还要发一句 kick，而且换了内容 ────────────────────────
  *   `--resume` 只是把上下文接回来，**不会让会话自己接着跑** —— 没有一条新的用户消息，它就停在输入框上，
@@ -55,8 +59,8 @@ const ORCH = 'JARVIS';
  *   （上下文里它正干到一半），而且没告诉它「你刚崩过、重投的消息带着 recovery」。
  *   ⇒ 换成「你刚被重启」那句。仍然是**最小启动任务**：只说报到、跑 poller、怎么读 recovery，不夹带具体工作。
  *   实测（2.1.312，`-p` 模式）：`claude -p --resume <id> "<prompt>"` 会把 prompt 当成接回之后的下一条用户消息处理。
- *   ⚠️ 交互模式下同一条命令的行为**没有实测**（在本机起交互式 claude 被权限分类器拒了）——
- *     PR 描述里列了人工验收步骤；如果交互模式不提交位置参数，这句只是不生效，不会造成错误的动作。
+ *   交互模式 10-28 补测过（JARVIS，私有 tmux server、临时目录，2.1.312 haiku；记录在 DUR3 的 PR 描述里）：
+ *     上一轮问答原样显示 ⇒ 这句被提交成一条新的用户消息 ⇒ 续写进**同一个** transcript。这是默认开的前提。
  */
 function defaultKick(name, { resumed = false } = {}) {
   return resumed
@@ -78,6 +82,21 @@ function claudeCommand({ permFlags, modelFlags, prompt, personaFile, resumeId = 
     + ` --append-system-prompt-file ${JSON.stringify(personaFile)}`;
 }
 
+/**
+ * `--resume` / `--fresh` ⇒ 这次要不要试着接回（DUR3）。抽出来是为了单测：它是纯函数，不碰 tmux / Redis。
+ *   默认（两个都不给）和 `--resume` ⇒ `{ fresh: false }`：试着接回，接不回就警告、退回全新会话。
+ *   `--fresh` ⇒ `{ fresh: true }`：不读记录、不警告。
+ *   两个都给 ⇒ `{ error }`：一个说「接回」、一个说「别接」，猜哪个都可能猜错 —— 而猜错的代价不对称
+ *   （猜成接回 = 想从头来的人又拿到了那段坏掉的上下文），所以不猜。
+ */
+function resumeFlags(argv = process.argv) {
+  const fresh = argv.includes('--fresh');
+  if (fresh && argv.includes('--resume')) {
+    return { error: '--resume 和 --fresh 只能给一个：不给 = 默认接回（等于 --resume）；--fresh = 明确起全新会话' };
+  }
+  return { fresh };
+}
+
 function arg(name, dflt) {
   const i = process.argv.indexOf(`--${name}`);
   return i > -1 && process.argv[i + 1] && !process.argv[i + 1].startsWith('--')
@@ -89,6 +108,9 @@ async function start() {
   const name = arg('name');
   const type = arg('type', 'dev');
   if (!name) { console.error('✗ 需要 --name'); process.exit(1); }
+  // 在一切有副作用的动作（建 worktree、provision、登记花名册）之前：参数自相矛盾就什么都不该发生。
+  const flags = resumeFlags();
+  if (flags.error) { console.error(`✗ ${flags.error}`); process.exit(1); }
   // ★ 在**注入点**校验类型，而不是等 hook 去拒。
   //
   //   注入一个能力表不认识的字符串，hook 会 fail-closed 拒掉这个 agent 的
@@ -299,21 +321,23 @@ async function start() {
     + '这会让 lib/provision.js 的 claimsIdentity 判据失去分辨力 —— 它命中的可能是一处**引用**，\n'
     + '而不是真正那一行身份声明。⇒ 于是「你的身份声明被换掉了」这件事，判据再也看不见。';
 
-  // ── `--resume`（opt-in，DUR1 S3）─────────────────────────────────────
-  //   有记录的 session_id ⇒ `claude --resume <id>` 接回重启前的会话；权限 / 模型 / --append-system-prompt-file 一个不变。
+  // ── 接回重启前的会话（DUR3 起**默认开**；DUR1 S3 时是 opt-in 的 `--resume`）──────────
+  //   有记录的 session_id ⇒ `claude --resume <id>` 接回；权限 / 模型 / --append-system-prompt-file 一个不变。
   //   记录是 SessionStart hook 写的 `temp/journal/<name>.session`（为什么不从 jsonl 最后一行拿，见 lib/agent-settings.js）。
-  //   接不回（没记录 / cwd 不同 / id 不像 UUID）⇒ **打警告、起全新会话** —— 不静默失败，也不拒绝启动：
-  //   用户要的是「起一个 agent」，上下文接不回不该让它起不来。
-  //   **默认不开**：开不开成默认，等人在真机上验收过再定（PR 描述里有人工步骤）。
-  const wantResume = process.argv.includes('--resume');
+  //   接不回（没记录 / id 不像 UUID / cwd 不同 / type 不同 / 旧格式记录 / transcript 已不在）⇒ **打警告、起全新会话**
+  //   —— 不静默失败，也不拒绝启动：用户要的是「起一个 agent」，上下文接不回不该让它起不来。
+  //   ★ 为什么现在可以默认开：交互模式 10-28 实测过（kick 会被提交成接回之后的一条新用户消息）。
+  //     而默认开之后**每一条**起 agent 的路径（start.sh、网页「启动」、watchdog 给的重启命令）都走这里 ——
+  //     所以 resumePlan 要先确认 transcript 还在：`claude --resume <找不到的 id>` 会 exit 1，tmux 会话当场没了。
+  //   `--fresh` ⇒ 整段跳过：不读记录、不打警告（人明说了要从头来，「没接回」不是一条需要告诉他的消息）。
   let resumeId = null;
-  if (wantResume) {
-    const plan = toolJournal.resumePlan({ ...toolJournal.readSession(name), cwd });
+  if (!flags.fresh) {
+    const plan = toolJournal.resumePlan({ ...toolJournal.readSession(name), cwd, type });
     if (plan.resume) {
       resumeId = plan.sessionId;
-      console.log(`  ✓ --resume：接回会话 ${resumeId}（记录于 ${plan.record.at || '?'}，source=${plan.record.source || '?'}）`);
+      console.log(`  ✓ 接回会话 ${resumeId}（记录于 ${plan.record.at || '?'}，source=${plan.record.source || '?'}；要从头来：--fresh）`);
     }
-    else console.warn(`  ⚠️  --resume 没接回：${plan.warn}`);
+    else console.warn(`  ⚠️  没接回重启前的会话：${plan.warn}`);
   }
 
   const kick = arg('kick', defaultKick(name, { resumed: !!resumeId }));
@@ -453,4 +477,4 @@ if (require.main === module) {
   main().catch((e) => { console.error('✗', e.message); process.exit(1); });
 }
 
-module.exports = { provision, listTemplateFiles, fillPlaceholders, claudeCommand, defaultKick };
+module.exports = { provision, listTemplateFiles, fillPlaceholders, claudeCommand, defaultKick, resumeFlags };

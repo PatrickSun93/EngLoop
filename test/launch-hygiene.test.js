@@ -258,7 +258,10 @@ async function main() {
   if (testDb === null) { console.log('  ✗ 拿不到测试库 —— 中止'); process.exit(1); }
   const testUrl = q.withDb(q.DEFAULTS.url, testDb);
   const redis = q.createClient(testUrl);
-  const childEnv = { ...tmuxEnv, ENGLOOP_REDIS_URL: testUrl, ENGLOOP_AGENT_SETTINGS_DIR: SETTINGS_DIR };
+  // ENGLOOP_JOURNAL_DIR：DUR3 起 agent-start **默认**读 `<name>.session` ⇒ 每一次起 agent 都要隔离，不只是【7b】
+  const JDIR = path.join(TMP, 'journal');
+  fs.mkdirSync(JDIR, { recursive: true });
+  const childEnv = { ...tmuxEnv, ENGLOOP_REDIS_URL: testUrl, ENGLOOP_AGENT_SETTINGS_DIR: SETTINGS_DIR, ENGLOOP_JOURNAL_DIR: JDIR };
 
   console.log('\n【7】agent-start：真跑一次（私有 tmux ＋ 假 claude）');
   const CREW = `lh${process.pid % 100000}`;
@@ -288,20 +291,24 @@ async function main() {
     ok(r2.status === 1 && /--worktree 和 --cwd 只能给一个/.test(r2.stderr), '--worktree 和 --cwd 一起给 ⇒ 拒绝（说清为什么）', r2.stderr);
   }
 
-  // ── DUR1 S3：`--resume` 真跑（同一个私有 tmux ＋ 假 claude；session 记录写在临时的 ENGLOOP_JOURNAL_DIR）──
+  // ── DUR1 S3 ＋ DUR3：接回会话真跑（同一个私有 tmux ＋ 假 claude；session 记录写在临时的 ENGLOOP_JOURNAL_DIR）──
   //   判据都从**假 claude 自己收到的 argv** 里读：`--resume <id>` 在不在、其余参数是不是原样、prompt 是哪一句。
-  console.log('\n【7b】agent-start --resume：接回 / cwd 不同 ⇒ 警告 ＋ 全新会话 / 不带参数 ⇒ 不接回');
+  //   DUR3 起不带参数就是接回；`--fresh` 明确不接（不读记录、不警告、kick 是原来那句）。
+  console.log('\n【7b】agent-start 接回会话：默认接回 / --resume 等于默认 / --fresh / 接不回的几种 ⇒ 警告 ＋ 全新会话');
   {
-    const JDIR = path.join(TMP, 'journal');
-    fs.mkdirSync(JDIR, { recursive: true });
     const SID = '98240ccc-f28e-421d-ab27-079d390d5758';
     const realCwd = fs.realpathSync(crewCwd);
-    const writeSession = (cwd) => fs.writeFileSync(path.join(JDIR, `${CREW}.session`),
-      JSON.stringify({ session_id: SID, cwd, source: 'startup', at: new Date().toISOString() }));
+    // 一份「真在」的 transcript（内容不读，只看在不在）
+    const TRANSCRIPT = path.join(TMP, 'projects', `${SID}.jsonl`);
+    fs.mkdirSync(path.dirname(TRANSCRIPT), { recursive: true });
+    fs.writeFileSync(TRANSCRIPT, '{}\n');
+    const sessFile = path.join(JDIR, `${CREW}.session`);
+    const writeSession = (o = {}) => fs.writeFileSync(sessFile,
+      JSON.stringify({ session_id: SID, cwd: realCwd, transcript_path: TRANSCRIPT, type: 'dev', source: 'startup', at: new Date().toISOString(), ...o }));
     const startOnce = async (extra) => {
       const t0 = Date.now();
       const r = spawnSync(process.execPath, [path.join(ROOT, 'bin', 'agent-start.js'), '--name', CREW, '--type', 'dev', '--cwd', realCwd, ...extra],
-        { env: { ...childEnv, ENGLOOP_JOURNAL_DIR: JDIR }, encoding: 'utf8', timeout: 60000 });
+        { env: childEnv, encoding: 'utf8', timeout: 60000 });
       const rec = await waitRecord(t0, 5000);
       tmuxRun(['kill-session', '-t', roster.sessionFor(CREW, 'dev')]);
       await roster.unregister(redis, CREW).catch(() => {});
@@ -309,25 +316,56 @@ async function main() {
     };
     // 一条命令里 positional 的那个参数（kick）：紧挨在 --append-system-prompt-file 前面
     const promptOf = (a) => a[a.indexOf('--append-system-prompt-file') - 1] || '';
+    // 改动之前那句，**写死在这里**（不从 defaultKick 取 —— 那是被测的）
+    const LEGACY_KICK = `你是 ${CREW}。进入你的循环：先向编排者 JARVIS 报到（写一条 outbox 消息说你已上线），然后运行 poller 等待指令。不要做别的。`;
+    const NOT_RESUMED = /没接回重启前的会话/;
 
-    writeSession(realCwd);
-    const yes = await startOnce(['--resume']);
-    ok(yes.r.status === 0 && argAfter(yes.a, '--resume') === SID, '★ --resume ⇒ argv 里有 `--resume <记录的 id>`', `${yes.r.stdout.slice(-300)} ${JSON.stringify(yes.a)}`);
+    writeSession();
+    const yes = await startOnce([]);
+    ok(yes.r.status === 0 && argAfter(yes.a, '--resume') === SID, '★ 不带参数（DUR3 默认）⇒ argv 里有 `--resume <记录的 id>`', `${yes.r.stdout.slice(-300)} ${yes.r.stderr.slice(-300)} ${JSON.stringify(yes.a)}`);
     ok(argAfter(yes.a, '--model') === caps.modelFor('dev') && argAfter(yes.a, '--permission-mode') === 'dontAsk'
       && argAfter(yes.a, '--settings') === path.join(SETTINGS_DIR, `${CREW}.json`)
       && argAfter(yes.a, '--append-system-prompt-file') === path.join(realCwd, 'CLAUDE.md'),
     'resume 时权限 / 模型 / --append-system-prompt-file 一个不少', JSON.stringify(yes.a));
     ok(/重启/.test(promptOf(yes.a)) && /recovery/.test(promptOf(yes.a)), 'resume 时 kick 换成「你刚被重启，先看 recovery」', promptOf(yes.a));
 
-    writeSession('/somewhere/else/entirely');
-    const other = await startOnce(['--resume']);
-    ok(other.r.status === 0 && !other.a.includes('--resume') && other.a.length > 0, 'cwd 不同 ⇒ 不带 --resume，照常起全新会话', JSON.stringify(other.a));
-    ok(/--resume 没接回/.test(other.r.stderr) && other.r.stderr.includes('/somewhere/else/entirely'), 'cwd 不同 ⇒ 打警告（说出记录的 cwd）', other.r.stderr.slice(-400));
-    ok(/进入你的循环/.test(promptOf(other.a)), '退回全新会话 ⇒ kick 是默认那句', promptOf(other.a));
+    const explicit = await startOnce(['--resume']);
+    ok(explicit.r.status === 0 && argAfter(explicit.a, '--resume') === SID, '--resume（DUR1 的写法）⇒ 照样接回，不报错', `${explicit.r.stderr.slice(-300)} ${JSON.stringify(explicit.a)}`);
 
-    writeSession(realCwd);
-    const off = await startOnce([]);
-    ok(off.r.status === 0 && !off.a.includes('--resume') && off.a.length > 0, '★ 不带 --resume ⇒ 不接回（opt-in，默认不开）', JSON.stringify(off.a));
+    const fresh = await startOnce(['--fresh']);
+    ok(fresh.r.status === 0 && !fresh.a.includes('--resume') && fresh.a.length > 0, '★ --fresh ⇒ 记录在也不接回', JSON.stringify(fresh.a));
+    ok(promptOf(fresh.a) === LEGACY_KICK, '★ --fresh ⇒ kick 跟改动前那句逐字节相同', promptOf(fresh.a));
+    ok(!NOT_RESUMED.test(fresh.r.stderr), '--fresh ⇒ 不打「没接回」警告（不读记录）', fresh.r.stderr.slice(-400));
+    // 同一次起法，--fresh 和「接回」的 argv 只差 `--resume <id>` 和 kick 那一格
+    const strip = (a) => a.filter((x, i) => x !== '--resume' && a[i - 1] !== '--resume').map((x) => (x === promptOf(a) ? '<kick>' : x));
+    ok(JSON.stringify(strip(fresh.a)) === JSON.stringify(strip(yes.a)), '--fresh 和接回的 argv：去掉 `--resume <id>`、kick 之后完全相同', `${JSON.stringify(strip(fresh.a))}\n ≠ ${JSON.stringify(strip(yes.a))}`);
+
+    const tBoth = Date.now();
+    const both = spawnSync(process.execPath, [path.join(ROOT, 'bin', 'agent-start.js'), '--name', CREW, '--type', 'dev', '--cwd', realCwd, '--resume', '--fresh'],
+      { env: childEnv, encoding: 'utf8', timeout: 30000 });
+    await wait(1500);
+    ok(both.status !== 0 && /--resume 和 --fresh 只能给一个/.test(both.stderr), '★ --resume --fresh ⇒ 非 0 退出，说清为什么', `status=${both.status} ${both.stderr.slice(-300)}`);
+    ok(recordsSince(tBoth).length === 0 && tmuxRun(['has-session', '-t', roster.sessionFor(CREW, 'dev')]).status !== 0,
+      '--resume --fresh ⇒ 什么都没起（没有 claude 进程、没有 tmux 会话）');
+    // 变异下它可能真起了 ⇒ 收掉，别让后面那几次撞在「已在运行」上（红在别处会掩盖指定的那条）
+    tmuxRun(['kill-session', '-t', roster.sessionFor(CREW, 'dev')]);
+    await roster.unregister(redis, CREW).catch(() => {});
+
+    // ── 接不回的几种：每一种都要「照常起全新会话 ＋ 警告里说出是哪一条」──
+    const notResumed = async (label, prep, re) => {
+      prep();
+      const x = await startOnce([]);
+      ok(x.r.status === 0 && !x.a.includes('--resume') && x.a.length > 0, `${label} ⇒ 不带 --resume，照常起全新会话`, JSON.stringify(x.a));
+      ok(NOT_RESUMED.test(x.r.stderr) && re.test(x.r.stderr), `${label} ⇒ 打警告（说出原因）`, x.r.stderr.slice(-400));
+      ok(promptOf(x.a) === LEGACY_KICK, `${label} ⇒ kick 是不接回那句`, promptOf(x.a));
+    };
+    await notResumed('cwd 不同', () => writeSession({ cwd: '/somewhere/else/entirely' }), /\/somewhere\/else\/entirely/);
+    // ★ 任务书第 1 节 ④：记录指向一个已经不在的 transcript —— 照接的话真 claude 会 exit 1、tmux 会话当场没了
+    await notResumed('★ transcript 已不在', () => writeSession({ transcript_path: path.join(TMP, 'projects', 'gone.jsonl') }), /transcript 已不在/);
+    await notResumed('type 不同（记录是 review，这次 --type dev）', () => writeSession({ type: 'review' }), /--type review/);
+    await notResumed('旧格式记录（没有 transcript_path）', () => fs.writeFileSync(sessFile,
+      JSON.stringify({ session_id: SID, cwd: realCwd, source: 'startup', at: new Date().toISOString() })), /旧格式记录/);
+    await notResumed('没有记录', () => fs.rmSync(sessFile, { force: true }), /没有可接回的会话/);
   }
 
   console.log('\n【8】orch-start：真跑一次（私有 tmux ＋ 假 claude ＋ 测试库）');

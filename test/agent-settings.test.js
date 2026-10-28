@@ -171,7 +171,8 @@ console.log('\n【8】工具调用日志（DUR1）：crew 和编排者挂，work
 {
   const S = require('../lib/agent-settings');
   const R = '/fake/engloop';
-  const JRE = /^node "([^"]+)" --event (\S+) --name (\S+)$/;
+  // 第 4 组：只有 session 那条带 `--type`（DUR3）—— 另外三个事件上它必须是 undefined（下面断言）
+  const JRE = /^node "([^"]+)" --event (\S+) --name (\S+)(?: --type (\S+))?$/;
   /** 某个事件上挂着的 journal 条目（matcher ＋ 解析出来的命令），没有 ⇒ [] */
   const journalOn = (s, ev) => (s.hooks[ev] || []).flatMap((e) => e.hooks.map((h) => ({ matcher: e.matcher, h, m: JRE.exec(h.command) })))
     .filter((x) => x.m && x.m[1] === '/fake/engloop/hooks/tool_journal.js');
@@ -187,6 +188,7 @@ console.log('\n【8】工具调用日志（DUR1）：crew 和编排者挂，work
       ok(js.length === 1 && js[0].matcher === '*' && js[0].m[2] === event && js[0].h.type === 'command' && js[0].h.timeout === 5,
         `${c.kind}/${c.name}：${ev} 挂了 journal（matcher *，--event ${event}，timeout 5）`, JSON.stringify(s.hooks[ev]));
       ok(js.length === 1 && js[0].m[3] === c.name, `${c.kind}/${c.name}：${ev} 的 journal --name 是它自己的名字`, js[0] && js[0].m[3]);
+      ok(js.length === 1 && js[0].m[4] === undefined, `${c.kind}/${c.name}：${ev} 的 journal 不带 --type（只有 SessionStart 带）`, js[0] && js[0].h.command);
     }
   }
   const crew = S.buildAgentSettings({ kind: 'crew', name: 'dev', type: 'dev', cwd: CWD, root: R });
@@ -194,6 +196,10 @@ console.log('\n【8】工具调用日志（DUR1）：crew 和编排者挂，work
     'crew：PreToolUse[0] 仍是 check_security，journal 排在它后面（并行跑，顺序不影响结论）', JSON.stringify(crew.hooks.PreToolUse));
   const ss = journalOn(crew, 'SessionStart');
   ok(ss.length === 1 && ss[0].m[2] === 'session' && ss[0].m[3] === 'dev', 'crew：SessionStart 挂了 journal（--event session，给 --resume 记 session_id）', JSON.stringify(crew.hooks.SessionStart));
+  // DUR3 R3：记录里要有类型，同名换类型重启时 resumePlan 才拦得住 ⇒ 命令行上的 --type 必须是**这个 agent 的**类型
+  ok(ss.length === 1 && ss[0].m[4] === 'dev', '★ crew/dev：SessionStart 的 journal 带 --type dev', ss[0] && ss[0].h.command);
+  const t1 = journalOn(S.buildAgentSettings({ kind: 'crew', name: 't1', type: 'test', cwd: CWD, root: R }), 'SessionStart');
+  ok(t1.length === 1 && t1[0].m[3] === 't1' && t1[0].m[4] === 'test', '★ crew/t1（type test）：SessionStart 带 --type test（不是写死的 dev）', t1[0] && t1[0].h.command);
 
   const o = S.buildAgentSettings({ kind: 'orchestrator', name: 'JARVIS', type: 'orchestrator', cwd: R, root: R });
   ok(!JSON.stringify(o.hooks).includes('check_security'), '★ 编排者**仍然没有** check_security（PreToolUse 上只有 journal）', JSON.stringify(o.hooks.PreToolUse));
