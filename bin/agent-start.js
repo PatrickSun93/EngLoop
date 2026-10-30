@@ -254,7 +254,8 @@ async function start() {
   //   把它放进 `launching.error` ⇒ 那个字段出现在 `/api/agents` 上，界面读得到。
   //   ⇒ 所以「有人会读的地方」在这条路径上是 **launching.error**，
   //     而通往它的唯一门票是**非零退出码**。零退出会让 stderr 被丢掉。
-  const personaFile = path.join(cwd, 'CLAUDE.md');
+  // 外部 cwd 的身份文件在 EngLoop 自己的目录里（provision 返回）；ROOT 内仍是 cwd/CLAUDE.md。
+  const personaFile = p.personaFile || path.join(cwd, 'CLAUDE.md');
   if (!fs.existsSync(personaFile)) {
     console.error(`✗ ${personaFile} 不在 —— ${name} 拒绝启动。`);
     console.error('  没有它，这个 agent 读到的最内层身份会是它 cwd 往上层叠到的那一份');

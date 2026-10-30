@@ -600,6 +600,42 @@ async function main() {
     await redis.del(RM);
   }
 
+  console.log('\n【11b】★★ needs_decision 透传：房间、私聊都带，且只在真时写（E14–E16）');
+  {
+    // 跟 expects_reply 的区别：**不看 room_hash**。私聊没有别的信号能让「等你拍板」出现在 Patrick 的「等你处理」里。
+    const RM = 'room:nd-test';
+    await redis.del(RM, OUT);
+    const w = (n, o) => fs.writeFileSync(path.join(dir, `${Date.now() + n}.json`), JSON.stringify(o));
+    // E14 私聊 + 布尔 true
+    w(30, { username: 'Patrick', text: '请你决定 A 还是 B', needs_decision: true });
+    await wait(500);
+    const dmMsgs = await drainStream(redis, OUT);
+    ok(dmMsgs[0]?.needs_decision === 'true', 'E14 私聊 needs_decision:true ⇒ 流里是 "true"', JSON.stringify(dmMsgs[0]));
+    ok(dmMsgs[0] && !('expects_reply' in dmMsgs[0]), 'E14 私聊仍然没有 expects_reply（「私聊默认要回」不动）');
+    // E16 私聊：缺失 / false / "false" ⇒ 根本没有这个键
+    await redis.del(OUT);
+    w(31, { username: 'Patrick', text: 'a' });
+    await wait(300);
+    w(32, { username: 'Patrick', text: 'b', needs_decision: false });
+    await wait(300);
+    w(33, { username: 'Patrick', text: 'c', needs_decision: 'false' });
+    await wait(500);
+    const neg = await drainStream(redis, OUT);
+    ok(neg.length === 3 && neg.every((m) => !('needs_decision' in m)),
+      'E16[阴] 缺失 / false / "false" ⇒ 流条目根本没有 needs_decision 键（"false" 在流里是 truthy）', JSON.stringify(neg.map((m) => Object.keys(m))));
+    // E15 房间 + 字符串 "true"
+    w(34, { room_hash: 'nd-test', text: '房间里要拍板', needs_decision: 'true' });
+    await wait(500);
+    w(35, { room_hash: 'nd-test', text: '房间里不要', needs_decision: 'false' });
+    await wait(500);
+    const rm = await drainStream(redis, RM);
+    ok(rm[0]?.needs_decision === 'true' && rm[0]?.expects_reply === 'false',
+      'E15 房间 "true" ⇒ 流里有 needs_decision:"true"，expects_reply 仍按原逻辑（未标 ⇒ "false"）', JSON.stringify(rm[0]));
+    ok(rm.length === 2 && !('needs_decision' in rm[1]), 'E16[阴] 房间 "false" ⇒ 没有该键', JSON.stringify(rm[1]));
+    ok(threads.needsDecision(rm[0]) === true && threads.needsDecision(rm[1]) === false, 'E15 读回来的原始字符串喂判据：true / false');
+    await redis.del(RM, OUT);
+  }
+
   console.log('\n【12】★★★ done 透传 + 🏁 自动打在 thread 根上');
   {
     // agent 报「任务完成」时标 `done`。两个产物：

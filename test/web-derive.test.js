@@ -978,7 +978,7 @@ const MUTATIONS = [
     from: 'const inWindow = (t) => t === null || now - t <= windowMs;', to: 'const inWindow = () => true;', also: [] },
   { id: 'M-RD-more', file: 'derive', kills: ['RD9'],
     why: '截断了不说剩几条',
-    from: 'more: Math.max(0, total - cap)', to: 'more: 0', also: [] },
+    from: 'more: Math.max(0, plain - cap)', to: 'more: 0', also: [] },
   { id: 'M-RD-latest', file: 'derive', kills: ['RD10'],
     why: '好几条跟帖时用第一条（不是最新那条）',
     from: 'if (!prev || newer(arr[i], i, prev.m, prev.idx)) verdictOf.set(j, { m: arr[i], idx: i });',

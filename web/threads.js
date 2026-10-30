@@ -362,6 +362,21 @@
   }
 
   /**
+   * 「这条话在等 Patrick 做决定」—— `needs_decision` 字段的判据，**唯一出处**。
+   *
+   * 白名单跟 `expectsReply` 逐字一样：流里每个字段都被 String() 过，`'false'` 是 truthy，
+   * 所以后端、前端一律走这里，**不许**写 `if (m.needs_decision)` 或 `=== true`。
+   * 它跟 `done` / `expects_reply` / `kind` 正交（不是第五个 kind，理由同 `isDone`）。
+   * 为什么不复用 `expects_reply`：那个字段的语义是「扇出时收件 agent 该不该回」，
+   * 房间和私聊默认值相反；「等 Patrick 拍板」是给人看的另一个维度。
+   */
+  function needsDecision(e) {
+    if (!e) return false;
+    const v = e.needs_decision;
+    return v === true || v === 'true' || v === 1 || v === '1';
+  }
+
+  /**
    * 回复这一条时，`reply_to` 该填谁 —— **它所在 thread 的根，不是它自己**。
    *
    * ══════════════════════════════════════════════════════════════
@@ -606,6 +621,8 @@
     // `expects_reply` 的规范化。跟 `isDone` 并排 —— 判据只有一处。
     // ⚠️ `lib/rooms.js:538` 还有一份逐字相同的，改这里要一起改（见函数注释）。
     expectsReply,
+    // `needs_decision` 的规范化，同样判据只有一处（见函数注释）。
+    needsDecision,
     // ★ `isDone` 跟 `KINDS` 同一个理由导出给写入侧：判据只有一处。
     //   `lib/relay.js`（写进流）、`bin/serve.js`（推 WS）、`web/app.js`
     //   （弹通知）三边都来引它。

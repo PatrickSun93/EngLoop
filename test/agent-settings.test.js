@@ -12,7 +12,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const {
-  buildCrewSettings, writeCrewSettings, isTrusted, trustRoot, TRUST_DIALOG, GIT_DENY,
+  buildCrewSettings, writeCrewSettings, isTrusted, trustRoot, mainWorktreeRoot, TRUST_DIALOG, GIT_DENY,
 } = require('../lib/agent-settings');
 
 let pass = 0, fail = 0;
@@ -39,13 +39,22 @@ console.log('\n【1】dev：能写、能上网、能跑 Bash');
   ok(p.deny.includes('Edit(//fake/work/dev/.claude/**)'), 'cwd 的 .claude/ 写不到');
   ok(GIT_DENY.every((r) => p.deny.includes(r)), 'git 基线全在 deny 里');
   ok(p.allow.includes('WebFetch'), 'web 能力 ⇒ 放 WebFetch/WebSearch 工具（由 hook 的 url_policy 再管）');
-  ok(s.sandbox.network.allowedDomains.length === 0, 'Bash 外网一律不放 —— 新依赖要人批（url_policy）');
+  const dom = s.sandbox.network.allowedDomains;
+  ok(['github.com', 'api.github.com', 'codeload.github.com', 'objects.githubusercontent.com',
+    'raw.githubusercontent.com'].every((d) => dom.includes(d)), 'GitHub 的五个域在 Bash 白名单里', JSON.stringify(dom));
+  ok(['registry.npmjs.org', 'npmjs.org', 'crates.io', 'static.crates.io', 'index.crates.io', 'pypi.org',
+    'files.pythonhosted.org'].every((d) => !dom.includes(d)) && dom.every((d) => /(^|\.)github(usercontent)?\.com$/.test(d)),
+  '阴性对照：包 registry（npmjs / crates.io / pypi）不在白名单 —— 新依赖仍要人批', JSON.stringify(dom));
   const w = s.sandbox.filesystem.allowWrite;
   ok(w.includes('/fake/engloop/temp/poll-dev.json') && !w.includes('/fake/engloop/temp'),
     'temp/ 按文件放行，不放整个目录（否则能写别人的 poll 文件）', JSON.stringify(w));
   ok(w.every((f) => !f.includes('agent-settings')), 'sandbox 写集里没有 agent-settings');
   ok(s.sandbox.network.allowLocalBinding === true, 'localhost 放行（Redis；阴性对照：去掉就 EPERM）');
-  ok(/tmux-\d+\/default$/.test(s.sandbox.network.allowUnixSockets[0]), 'tmux socket 放行（阴性对照：去掉就 EPERM）');
+  const socks = s.sandbox.network.allowUnixSockets;
+  ok(/tmux-\d+\/default$/.test(socks[0]), 'tmux socket 放行（阴性对照：去掉就 EPERM）');
+  ok(socks.includes(require('node:path').join(require('node:os').homedir(), '.orbstack/run/docker.sock')),
+    'docker.sock 放行，且 ~ 已按 homedir 展开', JSON.stringify(socks));
+  ok(socks.length === 2 && socks.every((x) => x.startsWith('/')), 'unix socket 只有 tmux 和 docker 两个，都是绝对路径', JSON.stringify(socks));
   const cmd = s.hooks.PreToolUse[0].hooks[0].command;
   ok(cmd.includes('/fake/engloop/hooks/check_security.js') && !cmd.includes('{{'),
     'hook 用绝对路径，没有未填的占位符（agents/dev 那份就是 {{ENGLOOP}}）', cmd);
@@ -85,11 +94,36 @@ console.log('\n【4】trust：按 git 根精确匹配，不看祖先');
   } }));
   ok(isTrusted('x', { claudeJson: cj, root: '/v/work/EngLoop' }), '根被信任 ⇒ true');
   // 上级目录被信任，它下面一棵 worktree 照样弹框
-  ok(!isTrusted('x', { claudeJson: cj, root: '/v/work/EngLoop-worktrees/dev1' }),
+  ok(!isTrusted('x', { claudeJson: cj, root: '/v/work/EngLoop-worktrees/dev1', mainRoot: null }),
     '只有祖先被信任 ⇒ false（这种情况会弹 trust 框）');
-  ok(!isTrusted('x', { claudeJson: cj, root: '/v/work/seen-but-declined' }), '记录在、但没点过 Yes ⇒ false');
-  ok(!isTrusted('x', { claudeJson: path.join(dir, 'nope.json'), root: '/v/work/EngLoop' }),
+  ok(!isTrusted('x', { claudeJson: cj, root: '/v/work/seen-but-declined', mainRoot: null }), '记录在、但没点过 Yes ⇒ false');
+  ok(!isTrusted('x', { claudeJson: path.join(dir, 'nope.json'), root: '/v/work/EngLoop', mainRoot: '/v/work/EngLoop' }),
     '~/.claude.json 读不到 ⇒ false（多拒一次有声，漏一次是卡死的 agent）');
+  // linked worktree 继承主仓库的信任（2026-10-30 Patrick 实测：worktree 里跑 claude 不弹框）
+  ok(isTrusted('x', { claudeJson: cj, root: '/v/work/EngLoop-worktrees/dev1', mainRoot: '/v/work/EngLoop' }),
+    'worktree 自己没记录、主仓库被信任 ⇒ true');
+  ok(!isTrusted('x', { claudeJson: cj, root: '/v/work/EngLoop-worktrees/dev1', mainRoot: '/v/work/seen-but-declined' }),
+    '主仓库在记录里但没点过 Yes ⇒ false（阴性对照：继承的是「点过 Yes」，不是「出现在记录里」）');
+  ok(!isTrusted('x', { claudeJson: cj, root: '/v/work/EngLoop-worktrees/dev1', mainRoot: '/v/other/NeverSeen' }),
+    '主仓库不在记录里 ⇒ false');
+  {
+    // 真 git：linked worktree 认得出主仓库；普通仓库、不在 git 里 ⇒ null
+    const cp = require('node:child_process');
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'engloop-wt-main-'));
+    const git = (...a) => cp.spawnSync('git', ['-C', repo, ...a], { encoding: 'utf8' });
+    git('init', '-q'); git('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'x');
+    const wt = repo + '-wt';
+    const added = git('worktree', 'add', '-q', '-b', 'wt/x', wt);
+    ok(added.status === 0, '夹具：git worktree add 成功（' + (added.stderr || '').trim() + '）');
+    const real = (p) => fs.realpathSync(p);
+    ok(mainWorktreeRoot(wt) && real(mainWorktreeRoot(wt)) === real(repo), 'linked worktree ⇒ 返回主仓库根');
+    ok(mainWorktreeRoot(repo) === null, '主仓库本身 ⇒ null（正控的反面：它不是「另一棵树」）');
+    ok(mainWorktreeRoot(os.tmpdir() + '/engloop-no-such-dir-xyz') === null || true, '不在 git 里不抛');
+    const cj2 = path.join(dir, 'claude2.json');
+    fs.writeFileSync(cj2, JSON.stringify({ projects: { [real(repo)]: { hasTrustDialogAccepted: true } } }));
+    ok(isTrusted(wt, { claudeJson: cj2 }), '端到端：worktree 路径 ⇒ 经 git 找到主仓库 ⇒ 被信任');
+    ok(!isTrusted(wt, { claudeJson: path.join(dir, 'claude-empty.json') }), '端到端阴性：记录里没有主仓库 ⇒ false');
+  }
   ok(trustRoot(path.join(__dirname, 'does', 'not', 'exist')) === path.resolve(__dirname, '..'),
     'cwd 还不存在 ⇒ 用最近的祖先问 git，拿到仓库根');
   ok(TRUST_DIALOG.test('Quick safety check: Is this a project you created or one you trust?')

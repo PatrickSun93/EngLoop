@@ -629,6 +629,7 @@ async function deliverLoop() {
           //   原样透传的话前端拿到 `'true'`，只要哪个读者写了 `=== true`
           //   就静默失效。**在这里判成布尔，下游拿到的就是一个干净的事实。**
           done: threads.isDone(m), verify: m.verify || null,   // verify：完成报告核没核过（前端据此决定通知弹不弹、写不写「未验证」）
+          needs_decision: threads.needsDecision(m),   // 判成布尔；流里是字符串 'true'
           // sender_type：stamp 的章，给前端认核验跟帖（system）、「需要你」认「人类回过了」。
           //   原样透传，没有就是 null；字段名从 lib/stamp.js 取，不写死。
           [stamp.SENDER_FIELD]: m[stamp.SENDER_FIELD] || null });
@@ -689,6 +690,7 @@ async function crewInLoop() {
         broadcast({ type: 'message', from: m.from, text: m.text, job_id: m.job_id,
           at: m.timestamp, reply_to: m.reply_to || null, kind: m.kind || null,
           done: threads.isDone(m), verify: m.verify || null,   // verify：完成报告核没核过（前端据此决定通知弹不弹、写不写「未验证」）
+          needs_decision: threads.needsDecision(m),   // 判成布尔；流里是字符串 'true'
           // sender_type：跟 deliverLoop 那条一致 —— 字段名从 lib/stamp.js 取。
           [stamp.SENDER_FIELD]: m[stamp.SENDER_FIELD] || null });
         await q.ack(redis, CREW_IN, CREW_IN_GROUP, m.id);

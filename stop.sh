@@ -12,6 +12,12 @@
 set -uo pipefail
 cd "$(dirname "$0")"
 
+# ⚠️ 变量后面紧跟全角标点时一律写成 `${X}`，不写 `$X`。
+#   macOS 自带的 bash 3.2 在 UTF-8 locale 下会把「）」的第一个字节（0xEF）也算进变量名：
+#   `"（HTTP $CODE）"` 读的是一个叫 `CODE\xef` 的变量 ⇒ `set -u` 下脚本当场退出。
+#   2026-10-30 实物：bus 接受了第一个 agent 的关停请求，脚本在打印「接受了」那行时崩掉，
+#   剩下的 agent 一个都没收到请求。test/sh-var-boundary.test.js 扫所有 .sh 守着这条。
+
 PORT="${ENGLOOP_PORT:-9969}"
 MODE="graceful"
 # 有一步没做成就记一笔，**不挡后面的步骤**，最后用非 0 退出码报出来。
@@ -42,17 +48,17 @@ else
     TOKEN_FILE="${ENGLOOP_ADMIN_TOKEN_FILE:-temp/bus-admin.token}"
     TOKEN=""
     if [ ! -r "$TOKEN_FILE" ]; then
-      echo "    ✗ 读不到 bus 的 admin token（$TOKEN_FILE）—— bus 没在跑，或者不是这份 checkout 起的"
+      echo "    ✗ 读不到 bus 的 admin token（${TOKEN_FILE}）—— bus 没在跑，或者不是这份 checkout 起的"
     else
       TOKEN=$(tr -d '[:space:]' < "$TOKEN_FILE")
       if ! [[ "$TOKEN" =~ ^[0-9a-f]{64}$ ]]; then
-        echo "    ✗ admin token 格式不对（$TOKEN_FILE）—— 重启 bus 会重写它"
+        echo "    ✗ admin token 格式不对（${TOKEN_FILE}）—— 重启 bus 会重写它"
         TOKEN=""
       fi
     fi
 
-    ACCEPTED=""   # bus 回了 2xx 的会话 —— 只有它们值得等
-    REJECTED=""   # 没送到的（非 2xx / bus 无响应 / 没钥匙）
+    ACCEPTED=""   # bus 回了 2xx 或 409 的会话 —— 只有它们值得等
+    REJECTED=""   # 没送到的（其余状态码 / bus 无响应 / 没钥匙）
     for s in $CUR; do
       name="${s#agent_}"; [ "$s" = "orch" ] && name="JARVIS"
       printf "    关停 %-14s " "$name"
@@ -67,9 +73,13 @@ else
       CODE="${RESP##*$'\n'}"
       BODY="${RESP%$'\n'*}"; [ "$BODY" = "$RESP" ] && BODY=""
       case "$CODE" in
-        2[0-9][0-9]) echo "✓ bus 接受了（HTTP $CODE）"; ACCEPTED="$ACCEPTED $s" ;;
+        2[0-9][0-9]) echo "✓ bus 接受了（HTTP ${CODE}）"; ACCEPTED="$ACCEPTED $s" ;;
+        # 409 = 这个 agent 之前收到的关停请求还在进行（bin/serve.js 按名字查 shutdownTracker.isPending）。
+        #   它会自己走完四步，不走的话 bus 的 shutdownTracker 到时也会收掉 ⇒ 跟 2xx 一样等。
+        #   当成「没送到」的话会直接强杀，把它正在做的收尾掐断（10-30 第二次跑 stop.sh 时 dev 就是这样被杀的）。
+        409) echo "✓ 已经在关停中（HTTP 409，之前的请求还在进行）⇒ 照样等它"; ACCEPTED="$ACCEPTED $s" ;;
         *) [ -z "$CODE" ] || [ "$CODE" = "000" ] && CODE="000（bus 无响应）"
-           echo "✗ 没送到（HTTP $CODE）$(printf '%s' "$BODY" | head -c 80)"
+           echo "✗ 没送到（HTTP ${CODE}）$(printf '%s' "$BODY" | head -c 80)"
            REJECTED="$REJECTED $name" ;;
       esac
     done
@@ -81,10 +91,11 @@ else
     if [ -n "$ACCEPTED" ]; then
       waiting() { local cur; cur=$(sessions); for a in $ACCEPTED; do echo "$cur" | grep -qxF "$a" && echo "$a"; done; }
       # 等它们自己走完四步。最长一轮轮询 + 余量。
-      echo "    等待收尾:$ACCEPTED（最长 660 秒，Ctrl-C 可中断后用 --now）"
+      echo "    等待收尾:${ACCEPTED}（最长 660 秒，Ctrl-C 可中断后用 --now）"
+      # 每轮先查再睡 6 秒 ⇒ 第 i 轮查的时候已经等了 (i-1)*6 秒。
       for i in $(seq 1 110); do
-        [ -z "$(waiting)" ] && { echo "    ✓ 被接受的都优雅退出了（${i}0 秒内）"; break; }
-        printf "\r    还剩 %s 个 … %ss " "$(waiting | wc -l | tr -d ' ')" "$((i*6))"
+        [ -z "$(waiting)" ] && { echo "    ✓ 被接受的都优雅退出了（约 $(( (i-1)*6 )) 秒）"; break; }
+        printf "\r    还剩 %s 个 … %ss " "$(waiting | wc -l | tr -d ' ')" "$(( (i-1)*6 ))"
         sleep 6
       done
       echo

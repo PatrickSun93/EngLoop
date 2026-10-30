@@ -24,20 +24,23 @@
   // ── 给人看的消息（A 组 ①②③）────────────────────────────────────────
   //
   // ══════════════════════════════════════════════════════════════════
-  // ★ 判据全部用**现成信号**，一个新字段都不加 —— 加一个字段要改至少 7 处
-  //   手工白名单，漏掉一处（比如消费侧 `bin/next.js`），
-  //   编排者就分不清「它没标」和「它标了我看不到」。
+  // ★ ①②③ 用**现成信号**；④ 是唯一加的字段 —— 加一个字段要改至少 7 处
+  //   手工白名单（relay / rooms / serve×2 / next / app×4），漏掉一处（比如消费侧 `bin/next.js`），
+  //   编排者就分不清「它没标」和「它标了我看不到」。test/needs-decision.test.js 逐处钉住。
   //
   //   ① 流程事件    `【流程】` 开头 **或** `Threads.expectsReply(m)`
   //   ② 完成报告    `Threads.isDone(m)`
   //   ③ 点名要他    文本里有 `@Patrick`
+  //   ④ 要他拍板    `Threads.needsDecision(m)` —— **这一档是后加的字段**（`needs_decision`），
+  //                 因为私聊里没有任何现成信号能表达「这条话在等你做决定」。仍然不按文本猜。
   //
   // ── 🔴 三条「不许这么写」 ──────────────────────────────────────────
   //   · **不许**用「@xxx 请开始」这类**文本形状**认流程事件：有假阳性 ——
   //     普通消息会因为**正文里引用了**那句话而被认成流程事件。
   //   · **不许**直接拿 `expects_reply` 字段做真值判断：`'false'` 是 truthy 字符串，
   //     真实消息里绝大多数是 `'false'` ⇒ 几乎全被判成流程事件。
-  //   · **不许**拿 `expects_reply` / `done` 直接跟布尔真值比较：流里存的是**字符串**。
+  //   · **不许**拿 `expects_reply` / `done` / `needs_decision` 直接跟布尔真值比较：流里存的是**字符串**。
+  //   · **不许**写 `if (m.needs_decision)`：同上，`'false'` 是 truthy。
   //   ⇒ 一律走 `Threads.*`，判据只有一处。
   //
   // ★ 放在这里而不在 `web/app.js`：「需要你」要用同一条判据，
@@ -53,6 +56,7 @@
     if (Threads.expectsReply(m)) out.push('expects_reply');      // ①
     if (Threads.isDone(m)) out.push('done');                     // ②
     if (/@Patrick\b/i.test(text)) out.push('mention');           // ③
+    if (Threads.needsDecision(m)) out.push('decision');          // ④ 要他拍板
     return out;
   }
   function isForHuman(m) { return forHumanReasons(m).length > 0; }
@@ -643,7 +647,7 @@
         }
         rows.push({ key, chKey, scope, id: m.id, msg: m, from: m.from, at: t, title: doneTitle(m.text),
                     verify: doneState(state), replies: repliesOf(m), followup: verdict ? verdict.m : null,
-                    orphanVerdict: false, ord: ord++ });
+                    orphanVerdict: false, decision: Threads.needsDecision(m), ord: ord++ });
       }
       for (const i of orphans) {
         const f = arr[i];
@@ -652,7 +656,7 @@
         const key = `${scope}|${f.id}`;
         if (f.id != null) { if (seen.has(key)) continue; seen.add(key); }
         rows.push({ key, chKey, scope, id: f.id, msg: f, from: f.from, at: t, title: doneTitle(f.text),
-                    verify: doneState(f.verify), replies: 0, followup: null, orphanVerdict: true, ord: ord++ });
+                    verify: doneState(f.verify), replies: 0, followup: null, orphanVerdict: true, decision: false, ord: ord++ });
       }
     }
     // 新的在上；判不出时间的排最后（不藏）
@@ -666,7 +670,11 @@
     });
     const total = rows.length;
     const cap = Number.isFinite(max) ? Math.max(0, max) : total;
-    return { rows: rows.slice(0, cap), total, more: Math.max(0, total - cap), wanted: [...wanted.values()] };
+    // ★ 带 `decision` 的行**不占**上限：它是最该看的那一类，被 8 条上限淹掉就是「决策点埋在完成报告里」
+    //   那个根因的第三处。先全收，再对其余行切 `max`；`more` 只数被切掉的非 decision 行。
+    let plain = 0;
+    const kept = rows.filter((r) => r.decision || plain++ < cap);
+    return { rows: kept, total, more: Math.max(0, plain - cap), wanted: [...wanted.values()] };
   }
 
   // ── 摘要句 ─────────────────────────────────────────────────────────────

@@ -825,6 +825,7 @@ function renderStatusRun(items) {
  *   ① 流程事件    `【流程】` 开头 **或** `Threads.expectsReply(m)`
  *   ② 完成报告    `Threads.isDone(m)`
  *   ③ 点名要他    文本里有 `@Patrick`
+ *   ④ 要他拍板    `Threads.needsDecision(m)`（`needs_decision` 字段）
  *
  * ── 🔴 三条「不许这么写」 ──────────────────────
  *   · **不许**用「@xxx 请开始」这类**文本形状**认流程事件：会有假阳性 ——
@@ -2559,6 +2560,7 @@ async function loadRoomHistory(hash) {
                   // ★ `expects_reply` 也带进 feed —— `isForHuman` 的 ① 认它，
                   //   三条入口都要带，漏带的话那一档在浏览器里永远不命中。过 `Threads.expectsReply`（流里是字符串）。
                   expects_reply: Threads.expectsReply(m) || undefined,
+                  needs_decision: Threads.needsDecision(m) || undefined,
                   // ★ `verify` 带进 feed —— 「刚完成」的核验标签和跟帖合并都要它（三条入口都要带）
                   verify: m.verify || undefined };
       seenIds.delete(dedupeKey(e));
@@ -2946,6 +2948,7 @@ async function loadDmHistory(name) {
                   done: Threads.isDone(m) || undefined,
                   sender_type: m.sender_type || undefined,
                   expects_reply: Threads.expectsReply(m) || undefined,
+                  needs_decision: Threads.needsDecision(m) || undefined,
                   verify: m.verify || undefined };
       seenIds.delete(dedupeKey(e));
       // 方向和来源流留在条目上 —— 复盘时「这条从哪条流查到的」是要核的，
@@ -3361,6 +3364,7 @@ function route(m) {
                     at: m.at, reply_to: m.reply_to || undefined, kind: m.kind || undefined,
                     done: Threads.isDone(m) || undefined,
                     expects_reply: Threads.expectsReply(m) || undefined,
+                    needs_decision: Threads.needsDecision(m) || undefined,
                     // bin/serve.js 推的 message 带 verify（不带 sender_type —— 核验跟帖要刷新后才合并得上）
                     verify: m.verify || undefined, sender_type: m.sender_type || undefined });
       if (pushedDm) bumpUnread(chKey);
@@ -3379,6 +3383,7 @@ function route(m) {
                     at: m.at, reply_to: m.reply_to, kind: m.kind,
                     done: Threads.isDone(m) || undefined,
                     expects_reply: Threads.expectsReply(m) || undefined,
+                    needs_decision: Threads.needsDecision(m) || undefined,
                     verify: m.verify || undefined, sender_type: m.sender_type || undefined });
       // 自己发的那条 WS 推回来时已经被本地回显去重了（push 返回 false），不算未读
       if (pushedRoom && m.from !== REACT_ME) bumpUnread(chKey);
@@ -3968,7 +3973,9 @@ function needCard(it, variant) {
   const done = it.reasons.includes('done');
   const card = el('div', 'ni' + (done ? ' done' : '') + (wide ? ' wide' : ''));
   // 标题只用信号本身（forHumanReasons 的类型 + 发言人），**不按文本猜「这是个问题」**
-  const why = it.reasons.includes('expects_reply') ? ['?', `${m.from} 等你回复`, '等你回复']
+  // `decision` 排在 `expects_reply` 之前 —— 更具体的先赢（「请你决定」比「等你回复」说得更准）
+  const why = it.reasons.includes('decision') ? ['⚖', `${m.from} 请你决定`, '需要你决定']
+    : it.reasons.includes('expects_reply') ? ['?', `${m.from} 等你回复`, '等你回复']
     : it.reasons.includes('mention') ? ['@', `${m.from} 点名你`, '点名你']
       : done ? ['🏁', `${m.from} 标了完成`, '完成报告']
         : ['▸', `${m.from} · 流程事件`, '流程事件'];
@@ -4221,6 +4228,11 @@ function renderTodayDone() {
       v.title = row.verify.title || '';
       ev.appendChild(v);
       if (row.replies) ev.appendChild(el('span', 'tag', `${row.replies} 条回复`));
+      if (row.decision) {
+        const dc = el('span', 'tag', '⚖ 需你决定');
+        dc.title = '这条完成报告同时在等你做决定 —— 也列在「等你处理」里（除非你已回过或收起）';
+        ev.appendChild(dc);
+      }
       b.appendChild(ev);
       b.onclick = () => jumpToMessage(row.chKey, row.id);
       box.appendChild(b);

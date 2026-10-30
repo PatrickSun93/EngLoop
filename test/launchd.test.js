@@ -636,6 +636,8 @@ esac
 const fs = require('fs');
 const TOKEN = ${JSON.stringify(TOKEN)}, SESS = ${JSON.stringify(SESS)}, LOG = ${JSON.stringify(BUSLOG)};
 const REJECT = new Set(['beta']);
+// gamma：之前的关停请求还在进行 ⇒ 真 bus 回 409（shutdownTracker.isPending）。它照样会自己走，所以这里也从会话表删掉它
+const CONFLICT = new Set(['gamma']);
 require('http').createServer((q, s) => {
   const m = /^\\/api\\/agents\\/([^/]+)\\/shutdown$/.exec(q.url);
   const authOk = q.headers.authorization === 'Bearer ' + TOKEN;
@@ -648,6 +650,7 @@ require('http').createServer((q, s) => {
   const sess = name === 'JARVIS' ? 'orch' : 'agent_' + name;
   const left = fs.readFileSync(SESS, 'utf8').split('\\n').filter((x) => x && x !== sess);
   fs.writeFileSync(SESS, left.map((x) => x + '\\n').join(''));
+  if (CONFLICT.has(name)) { s.statusCode = 409; return s.end('{"error":"已经在关停中"}'); }
   s.end(JSON.stringify({ ok: true, name }));
 }).listen(${PORT}, '127.0.0.1');
 setTimeout(() => process.exit(0), 60000);
@@ -655,14 +658,16 @@ setTimeout(() => process.exit(0), 60000);
   const busPid = orphan(`${JSON.stringify(process.execPath)} ${JSON.stringify(fakeBus)}`);
   ok(busPid > 0 && waitListen('127.0.0.1', PORT), `（前置）假 bus 在 127.0.0.1:${PORT} 上听`);
 
-  const run = ({ tokenFile = TOKEN_FILE, port = PORT, sessions = ['orch', 'agent_alpha', 'agent_beta'], fakeBusPid = '' } = {}) => {
+  // lang：不传 ⇒ env 里没有 LANG（C locale）。⚠️ 上面 g1–g3 一直这么跑，于是 bash 3.2 把「$CODE）」读成
+  //   `CODE\xef` 的那个 bug（只在 UTF-8 下出现）在这里从来没红过 —— 真用户的终端是 UTF-8。见 g4。
+  const run = ({ tokenFile = TOKEN_FILE, port = PORT, sessions = ['orch', 'agent_alpha', 'agent_beta'], fakeBusPid = '', lang = null } = {}) => {
     fs.writeFileSync(LOG, ''); fs.writeFileSync(BUSLOG, '');
     fs.writeFileSync(SESS, sessions.map((x) => `${x}\n`).join(''));
     const r = spawnSync('/bin/bash', [path.join(R, 'stop.sh')], {
       encoding: 'utf8', timeout: 60000,
       env: { PATH: S, HOME: newHome(), ENGLOOP_LAUNCHD_LABEL: `test.ops1.stop.${process.pid}`,
         STUB_LOG: LOG, STUB_SESS: SESS, ENGLOOP_PORT: String(port), ENGLOOP_ADMIN_TOKEN_FILE: tokenFile,
-        FAKE_BUS_PID: String(fakeBusPid) },
+        FAKE_BUS_PID: String(fakeBusPid), ...(lang ? { LANG: lang, LC_ALL: lang } : {}) },
     });
     const calls = fs.readFileSync(LOG, 'utf8').trim().split('\n').filter(Boolean);
     const bus = fs.readFileSync(BUSLOG, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l));
@@ -714,6 +719,23 @@ setTimeout(() => process.exit(0), 60000);
     'bus 那一节的端口判据问的是 127.0.0.1:<端口>', JSON.stringify(g3.calls.filter((c) => c.startsWith('lsof'))));
   ok(v6up && new RegExp(`✓ 127\\.0\\.0\\.1:${PORT2} 已释放`).test(g3.stdout),
     '★ ::1 上有监听也报「127.0.0.1 已释放」（别的地址上的转发进程不算占用）', g3.stdout.slice(-500));
+
+  // ── g4：UTF-8 locale（真终端的样子）；alpha 被接受（2xx），gamma 回 409（之前的请求还在进行）──
+  //   2026-10-30 实物两条：① bash 3.2 ＋ UTF-8 下打印「接受了（HTTP $CODE）」那行 `set -u` 退出，
+  //   后面的 agent 一个都没收到请求；② 重跑时 dev 回 409，被当成「没送到」直接强杀。
+  const utf8 = 'en_US.UTF-8';
+  const g4 = run({ sessions: ['agent_alpha', 'agent_gamma'], lang: utf8 });
+  ok(g4.status === 0 && !/unbound variable/.test(g4.stderr),
+    `★★ ${utf8} 下不崩（没有 unbound variable），退出 0`, `status=${g4.status}\n${g4.stderr.slice(-300)}`);
+  ok(g4.bus.filter((x) => x.method === 'POST').length === 2,
+    '★ 第一个之后的 agent 也收到了关停请求（崩在第一个的话这里是 1）', JSON.stringify(g4.bus));
+  ok(/alpha\s+✓ bus 接受了（HTTP 200）/.test(g4.stdout), '接受的那行原样打出 HTTP 码（假 bus 回 200）', g4.stdout.slice(-700));
+  ok(/gamma\s+✓ 已经在关停中（HTTP 409/.test(g4.stdout) && /等待收尾: agent_alpha agent_gamma（/.test(g4.stdout),
+    '★★ 409 ⇒ 当成已接受，进等待名单', g4.stdout.slice(-700));
+  ok(!killed(g4, 'agent_gamma') && !/直接兜底强杀: gamma/.test(g4.stdout),
+    '★★ 409 的那个不被强杀（它的收尾还在进行）', JSON.stringify(g4.calls.filter((c) => c.startsWith('tmux kill'))));
+  ok(/被接受的都优雅退出了（约 0 秒）/.test(g4.stdout),
+    '★ 报的是实际等了多久：第一轮就查到都走了 ⇒ 约 0 秒（不是按每轮 10 秒算的「10 秒内」）', g4.stdout.slice(-500));
 }
 
 // ──────────────────────────────────────────────────────────────────────

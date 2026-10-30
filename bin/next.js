@@ -760,6 +760,8 @@ async function main() {
         //   （`lib/queue.js` 读流时全过 `String()`），原样透传的话下游只要有一个
         //   人写 `=== true` 就静默失效。判成布尔再给出去。
         done: threads.isDone(m) || undefined,
+        // ★ `needs_decision`：JARVIS 转述 agent 的报告时要保留这个标记（转述是新消息，字段不继承）。
+        needs_decision: threads.needsDecision(m) || undefined,
         // ★ `verify`：这份完成报告**核没核过** —— 又一个手工白名单字段。
         //   漏掉它的话，编排者分不清「核验在跑（pending）」和「核过了（pass）」和「没带 evidence（missing）」，
         //   而 poll_rules §7.3 要它转达之前先看这个字段。值域见 `lib/done-verify.js` 的 `VERIFY`。

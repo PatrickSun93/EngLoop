@@ -21,7 +21,7 @@ const path = require('node:path');
 // ⚠️ 它在 `lib/provision.js` 而不在 `bin/agent-start.js`：
 //   **worker 也要用它，而 lib 依赖 bin 是反向依赖**（bin 下的是入口脚本，
 //   天然带副作用、天然不可测）。
-const { provision, listTemplateFiles, fillPlaceholders, claimsIdentity, countClaims } = require('../lib/provision');
+const { provision, listTemplateFiles, fillPlaceholders, claimsIdentity, countClaims, isExternalCwd, PERSONA_DIR } = require('../lib/provision');
 
 const ROOT = path.join(__dirname, '..');
 
@@ -30,7 +30,12 @@ const ok = (c, l, d = '') => c
   ? (pass++, console.log(`  ✓ ${l}`))
   : (fail++, console.log(`  ✗ ${l}${d ? '  → ' + d : ''}`));
 
-const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'engloop-provision-'));
+// 旧的（cwd 在 EngLoop 之内）行为的各节用 ROOT/temp/ 下的目录 —— 在 tmpdir 里它们是「外部 cwd」，
+// 走的是另一条路（不往 cwd 写任何东西，见【8】）。temp/ 在 .gitignore 里。
+fs.mkdirSync(path.join(ROOT, 'temp'), { recursive: true });
+const TMP = fs.mkdtempSync(path.join(ROOT, 'temp', 'engloop-provision-'));
+// 外部 cwd 的各节：tmpdir 在 ROOT 之外；身份文件落在这里的 personas/，不是生产的 temp/personas/
+const EXT = fs.mkdtempSync(path.join(os.tmpdir(), 'engloop-provision-ext-'));
 const read = (p) => fs.readFileSync(p, 'utf8');
 
 function main() {
@@ -429,7 +434,48 @@ function main() {
     'listTemplateFiles 会递归进子目录');
   ok(fillPlaceholders('{{AGENT_NAME}}/{{CWD}}', 'n', '/c') === 'n//c', 'fillPlaceholders 替换正确');
 
+  console.log('\n【8】★★ 外部 cwd：不往别人的项目目录里写任何东西');
+  {
+    // 成因：Patrick 手动在 resume / teams-meeting-plugin 等项目里起 claude，被下发进去的
+    // .claude/settings.json（hook + deny）拦住、被 CLAUDE.md 当成 agent。agent 会话本身不需要它们：
+    // 权限走 --settings + --setting-sources user，身份走 --append-system-prompt-file。
+    const proj = path.join(EXT, 'some-project');
+    fs.mkdirSync(proj, { recursive: true });
+    fs.writeFileSync(path.join(proj, 'README.md'), 'x');
+    const personasDir = path.join(EXT, 'personas');
+    const r = provision('evaltest', proj, 'eval', { personasDir });
+    ok(r.external === true && r.provisioned === true, '报告说是外部 cwd、下发了');
+    ok(fs.readdirSync(proj).join() === 'README.md', '★ cwd 里只有原来的 README.md —— 没有 CLAUDE.md、没有 .claude/',
+      fs.readdirSync(proj).join());
+    ok(r.personaFile === path.join(personasDir, 'evaltest.md') && fs.existsSync(r.personaFile), '身份文件在 personasDir/<name>.md');
+    const md = read(r.personaFile);
+    ok(!md.includes('{{') && md.includes('evaltest') && md.includes(proj), '占位符已替换（名字、{{CWD}}）');
+    ok(claimsIdentity(md, 'evaltest'), '渲染出来的文件点名了这个 agent（agent-start 的门认它）');
+    ok(r.skipped.includes(path.join('.claude', 'settings.json')) && r.written.length === 1, 'settings.json 被跳过且报出来了（不是静默少一个）', JSON.stringify(r.skipped));
+    ok(r.overwritten.length === 0 && r.superseded.length === 0, '没有 overwritten / superseded —— 没碰任何已有文件');
+    // 重启：身份文件是 EngLoop 的，每次重新渲染
+    fs.writeFileSync(r.personaFile, 'stale');
+    provision('evaltest', proj, 'eval', { personasDir });
+    ok(read(r.personaFile).includes('evaltest'), '再起一次会重新渲染（它是框架生成的，不是 agent 的笔记）');
+    // 阴性对照：ROOT 内的 cwd 行为不变（旧各节已覆盖；这里直接钉）
+    const inner = path.join(TMP, 'inner-agent');
+    const ri = provision('evaltest', inner, 'eval');
+    ok(!ri.external && fs.existsSync(path.join(inner, 'CLAUDE.md')) && fs.existsSync(path.join(inner, '.claude', 'settings.json'))
+      && ri.personaFile === path.join(inner, 'CLAUDE.md'), '阴性对照：ROOT 内 cwd 照旧下发两个文件，personaFile 是 cwd/CLAUDE.md');
+    // 名字进文件名 ⇒ 不许逃出 personasDir
+    let threw = false;
+    try { provision('../evil', proj, 'eval', { personasDir }); } catch (_) { threw = true; }
+    ok(threw && !fs.existsSync(path.join(EXT, 'evil.md')), '名字带路径成分 ⇒ 抛，且没写出 personasDir 之外');
+    ok(PERSONA_DIR === path.join(ROOT, 'temp', 'personas'), '默认 personasDir 在 EngLoop 自己的 temp/ 下');
+    // 判据本身
+    ok(!isExternalCwd(path.join(ROOT, 'agents', 'dev')) && !isExternalCwd(path.join(ROOT, 'workers', 'eval'))
+      && !isExternalCwd(`${ROOT}-worktrees/dev`), 'ROOT 内、workers/、<ROOT>-worktrees/ 之下都不是外部');
+    ok(isExternalCwd(`${ROOT}-backup/x`) && isExternalCwd('/tmp/some-project') && isExternalCwd(path.dirname(ROOT)),
+      '阴性对照：名字相近的 <ROOT>-backup/、/tmp、ROOT 的父目录都是外部（不是 startsWith 式的误放）');
+  }
+
   fs.rmSync(TMP, { recursive: true, force: true });
+  fs.rmSync(EXT, { recursive: true, force: true });
 
   console.log(`\n${'─'.repeat(46)}\n  通过 ${pass} · 失败 ${fail}\n`);
   process.exit(fail === 0 ? 0 : 1);
