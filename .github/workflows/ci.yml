@@ -1,0 +1,118 @@
+# CI：Linux（ubuntu-latest）· Node 22 · redis:7 service container · `npm ci` · 跑测试。
+#
+# ── 跳过表在哪 ─────────────────────────────────────────────────────────────
+#   不在这个文件里：在 `scripts/ci-test.sh`，每个被跳过的文件一行原因（本地也能原样跑：`bash scripts/ci-test.sh`）。
+#
+# ── 为什么是 Linux ─────────────────────────────────────────────────────────
+#   service container 只在 Linux runner 上有。代价：只有 macOS 才有的东西（`sandbox-exec`、
+#   `launchctl`）在这里没有 —— 依赖它们的测试要么自己 ⏭，要么进跳过表。
+#
+# ── 补的环境（都是「本机本来就有」的东西，不是放宽测试）─────────────────────
+#   tmux、redis-cli   apt 装。tmux 那一类测试起的是自己的私有 socket；launchd 测试要 redis-cli ping
+#   一个 tmux 会话     tmux.test.js【7c】要「当前有会话可验」—— 本机上总有，runner 上没有 ⇒ 起一个空会话
+#   TZ                 watchdog-rate-limit-exit 有一格要「本机时区非 UTC」才区分得开；runner 是 UTC ⇒ 给开发机的时区
+#   仓库不在 HOME 下   launchd.test.js 验「换了 HOME 以后输出里没有真 HOME」，而 runner 的工作目录在 /home/runner 下面，
+#                      输出里的仓库路径本身就含 HOME ⇒ 拷到 /tmp 下跑（开发机上仓库也不在 HOME 下）
+#
+# ── redis ──────────────────────────────────────────────────────────────────
+#   `lib/queue.js` 读 `ENGLOOP_REDIS_URL`，默认 127.0.0.1:6379。测试进程自己会换到测试库
+#   （`lib/queue.js` 的 createClient 那段），这里只给「连哪台」。
+
+name: CI
+
+# push 只跑 main：PR 分支上的推送已经由 pull_request 跑过一遍，两个都开的话每推一次跑两份
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+# 同一个分支 / PR 上新推一次，旧的那次还在跑就取消 —— 它的结果已经没人看了
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  ENGLOOP_REDIS_URL: redis://127.0.0.1:6379
+  TZ: America/Los_Angeles
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      # 全量历史：有测试要读老提交（verify-complete 借老 commit 的树量基线）
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - name: 装 tmux、redis-cli
+        run: sudo apt-get update -q && sudo apt-get install -y -q tmux redis-tools
+      - name: 补本机环境（git 身份、一个 tmux 会话、仓库搬出 HOME）
+        run: |
+          git config --global user.name 'EngLoop CI'
+          git config --global user.email 'ci@engloop.invalid'
+          tmux new-session -d -s ci-idle
+          cp -a "$GITHUB_WORKSPACE" /tmp/engloop
+      - name: npm ci
+        working-directory: /tmp/engloop
+        run: npm ci
+      - name: 测试
+        working-directory: /tmp/engloop
+        run: bash scripts/ci-test.sh
+
+  # ── 浏览器测试（`test/*.playwright.js`，不在 `npm test` 里）────────────────
+  #   两种浏览器，照各文件自己的写法，不改：
+  #     web-today / web-lanes   写死 `channel: 'chrome'`（系统 Chrome）—— runner 镜像里装着 Google Chrome，不用下载
+  #     bus-login / e2e-notify  用 playwright 自带的 chromium ⇒ `npx playwright install --with-deps chromium`
+  #   前两个连预览服务器（夹具数据、随机端口）；后两个由 `scripts/run-e2e-notify.js` 起一个隔离 bus
+  #   （测试端口、redis 测试库、私有 tmux 目录，不起 worker 池），所以这个 job 也要 redis。
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: 装 playwright 自带的 chromium
+        run: npx playwright install --with-deps chromium
+      # 一个红了也把后面的跑完（!cancelled()），一次看全
+      - name: web-today（预览服务器 · 系统 Chrome）
+        run: node test/web-today.playwright.js
+      - name: web-lanes（预览服务器 · 系统 Chrome）
+        if: ${{ !cancelled() }}
+        run: node test/web-lanes.playwright.js
+      - name: bus-login（隔离 bus · chromium）
+        if: ${{ !cancelled() }}
+        run: node scripts/run-e2e-notify.js test/bus-login.playwright.js
+      - name: e2e-notify（隔离 bus · chromium）
+        if: ${{ !cancelled() }}
+        run: node scripts/run-e2e-notify.js

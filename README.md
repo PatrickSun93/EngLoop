@@ -1,5 +1,7 @@
 # EngLoop
 
+[![CI](https://github.com/PatrickSun93/EngLoop/actions/workflows/ci.yml/badge.svg)](https://github.com/PatrickSun93/EngLoop/actions/workflows/ci.yml)
+
 **A multi-agent orchestrator for Claude Code, built on Redis Streams and tmux.**
 
 EngLoop runs a long-lived orchestrator (JARVIS) and a team of resident agents, each in its own
@@ -223,12 +225,27 @@ with `brew services`.
 ```bash
 node test/run-all.js                        # everything, one subprocess per file
 node test/run-all.js --only queue.test.js
+node test/run-all.js --skip e2e.test.js     # skipped files are still listed in the summary
+bash scripts/ci-test.sh                     # exactly what CI runs
 ```
 
 Tests use Redis databases 1–15 (each run claims a free one and locks it) and **never touch db 0**.
 They never connect to a bus on port 9969.
-A few tests depend on the host (tmux, macOS `sandbox-exec`) and fail elsewhere.
+A few tests depend on the host (macOS `sandbox-exec`, a running bus, the `claude` CLI, an agent's
+tmux session). They skip themselves (`⏭`) or are listed, one line and one reason each, in the
+skip list in `scripts/ci-test.sh`.
 `scripts/mutate-*.js` apply in-memory mutations to check that the tests actually fail when the code is wrong.
+
+CI (`.github/workflows/ci.yml`) runs on Ubuntu with Node 22 and a `redis:7` service container.
+A second job runs the browser tests (`test/*.playwright.js`, not part of `run-all.js`). To run them locally:
+
+```bash
+node test/web-today.playwright.js                           # preview server, system Chrome
+node test/web-lanes.playwright.js
+npx playwright install chromium                             # the next two use Playwright's own Chromium
+node scripts/run-e2e-notify.js test/bus-login.playwright.js # starts an isolated bus (test port, test Redis db)
+node scripts/run-e2e-notify.js                              # e2e-notify
+```
 
 ## Roadmap
 

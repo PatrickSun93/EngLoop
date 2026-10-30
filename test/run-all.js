@@ -67,6 +67,28 @@ if (ONLY) {
   files = ALL_FILES.filter((f) => want.includes(f));
 }
 
+// ── `--skip a.test.js,b.test.js`：这几个不跑（CI 用：依赖本机 tmux 会话 / 真 bus / sandbox-exec 的那些）──
+//
+//   跟 `--only` 对称：名字对不上**直接退出** —— 一个拼错的名字会让那个文件照跑、照红，
+//   而更坏的方向是文件改了名、跳过表还写着旧名：旧名对不上 ⇒ 它在这里炸，而不是悄悄失效。
+//   ★ 被跳过的**照样进结果**（`skipped: true`、`skip_reason: 'cli'`），汇总里跟 ⏭ 那些一起列出来 ——
+//     不跑而不列，合计数看起来就覆盖了它们（下面「⚠ N 个文件跳过」那段同一个理由）。
+//   ⚠️ 为什么不在测试文件里各自判「我在 CI 里吗」然后 ⏭：那是改测试逻辑；而「在哪儿不跑」是跑法，
+//     该集中写在跑的人那里（`.github/workflows/ci.yml` → `scripts/ci-test.sh`，每个文件一行原因）。
+const SKIP = argValue('--skip');
+let skipList = [];
+if (SKIP) {
+  skipList = SKIP.split(',').map((s) => s.trim()).filter(Boolean);
+  const unknown = skipList.filter((f) => !ALL_FILES.includes(f));
+  if (!skipList.length || unknown.length) {
+    console.error(`run-all: --skip 里有不存在的测试文件：${unknown.join(', ') || '(空)'}`
+      + ' —— 写 test/ 下的文件名（如 graph.test.js），逗号分隔');
+    process.exit(2);
+  }
+}
+const cliSkipped = files.filter((f) => skipList.includes(f));
+files = files.filter((f) => !skipList.includes(f));
+
 // ── 申报「我在跑一个长任务」，免得 watchdog 把跑测试的 agent 判成失聪 ──
 //
 // ★ watchdog 看 outbox 的判据**对这一类无解**：agent 在这次 Bash 调用期间
@@ -229,6 +251,11 @@ for (const f of files) {
     out,
   });
 }
+// `--skip` 的那些也进结果（见上面 `--skip` 那段）：按文件名插回原位，汇总里读起来跟没跳过时同一个顺序
+for (const f of cliSkipped) {
+  results.push({ file: f, pass: 0, fail: 0, reported: false, skipped: true, skipReason: 'cli', code: null, out: '' });
+}
+results.sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
 
 let totalPass = 0, totalFail = 0, broken = 0;
 for (const r of results) {
@@ -250,7 +277,7 @@ for (const r of results) {
   const silent = !r.skipped && !r.reported;
 
   if (r.skipped) {
-    console.log(`  ⏭  ${r.file.padEnd(26)} 跳过`);
+    console.log(`  ⏭  ${r.file.padEnd(26)} 跳过${r.skipReason === 'cli' ? '（--skip，没跑）' : ''}`);
   } else if (silent) {
     broken++;
     console.log(`  ✗  ${r.file.padEnd(26)} **没报出总数**（exit ${r.code}）`
@@ -432,9 +459,11 @@ if (JSON_OUT) {
   const doc = {
     schema: 'engloop-test-results/1',
     only: ONLY ? files : null,
+    skip: SKIP ? cliSkipped : null,
     files: results.map((r) => ({
       file: r.file, pass: r.pass, fail: r.fail, exit: r.code,
-      reported: r.reported, skipped: r.skipped, failures: failureTitles(r),
+      reported: r.reported, skipped: r.skipped, ...(r.skipReason ? { skip_reason: r.skipReason } : {}),
+      failures: failureTitles(r),
     })),
     total: { pass: totalPass, fail: totalFail, broken },
     worktree_changed_during_run: (() => {
@@ -456,10 +485,10 @@ if (JSON_OUT) {
   }
 }
 
-if (ONLY) {
+if (ONLY || SKIP) {
   // ★ 只跑了一部分 ⇒ 不写 results/last-run.json：顶栏读它当「全量的最近一次」，
-  //   一次 3 个文件的绿会把一次全量的红盖掉。
-  console.log(`  ↳ --only（${files.length} 个文件）⇒ 不更新 results/last-run.json（那份只记全量）`);
+  //   一次 3 个文件的绿会把一次全量的红盖掉。`--skip` 同理：少跑的那几个正是本机才红的那几个。
+  console.log(`  ↳ ${ONLY ? '--only' : '--skip'}（跑了 ${files.length} 个文件）⇒ 不更新 results/last-run.json（那份只记全量）`);
 } else try {
   const rec = status.writeLastRun({
     passed: totalPass,
