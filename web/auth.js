@@ -7,7 +7,13 @@
  * 这个文件只做一件事：**任何 /api 请求拿到 401 ⇒ 弹一个最小的登录框**。
  *   · 包住 window.fetch —— 必须在 app.js 之前加载（index.html 里的顺序就是机制）
  *   · 登录成功 ⇒ 整页重载：WS 重连、所有面板重新拉一遍，比逐个补救简单也不会漏
- *   · session 存在 bus 内存里 ⇒ bus 重启后第一次轮询就会 401 ⇒ 框会自己弹出来
+ *   · session 落盘（bus 重启不掉）；过期 / 换 key / 用户被删 ⇒ 下一次请求 401 ⇒ 框会自己弹出来
+ *
+ * ── 一次性登录链接：`/#login-token=<token>`（`node bin/bus-user.js login <name>` 打印的）──
+ *   token 在 `#` 后面 ⇒ 服务器从来看不到这个 URL 里的它；这里读出来、POST /api/login-token 换 session。
+ *   ★ 先用 history.replaceState 把它从地址栏抹掉，再发请求：
+ *     成不成它都已经没用了（一次性），留在地址栏里只会被收藏、被同步进别的设备的历史。
+ *   成功 ⇒ 跳到首页（同 key 登录：整页重载）；失败 ⇒ 登录框里说清是无效 / 过期 / 用过。
  *
  * ⚠️ 不好看是有意的。它只要做到：弹得出来、说得清为什么。
  */
@@ -17,7 +23,12 @@
   let shown = false;
 
   function showLogin(reason) {
-    if (shown) return;
+    // 已经弹了：只换掉说明 —— 一次性链接失败的原因可能比「随便哪个 401」晚到一拍，要盖过它
+    if (shown) {
+      const why = document.getElementById('login-why');
+      if (why && reason) why.textContent = reason;
+      return;
+    }
     shown = true;
     const wrap = document.createElement('div');
     wrap.id = 'login-overlay';
@@ -36,7 +47,7 @@
       + '</form>';
     document.body.appendChild(wrap);
     document.getElementById('login-why').textContent = reason
-      || 'bus 要求登录（bus 重启后要重新登录一次 —— session 存在 bus 内存里）。';
+      || 'bus 要求登录（没登录过，或者 session 过期 / key 换过）。';
     document.getElementById('login-user').focus();
     document.getElementById('login-form').addEventListener('submit', async (ev) => {
       ev.preventDefault();
@@ -59,14 +70,34 @@
     });
   }
 
+  const whenBody = (fn) => (document.body ? fn() : document.addEventListener('DOMContentLoaded', fn));
+
+  // ── 一次性登录链接 ──
+  //   换 session 的这一拍里，app.js 的请求照样会 401 —— 那时不弹通用的框（成功了马上就重载），
+  //   失败时由下面带原因的那次 showLogin 弹。
+  let redeeming = false;
+  const tokenMatch = /^#login-token=([A-Za-z0-9_-]+)$/.exec(location.hash || '');
+  if (tokenMatch) {
+    redeeming = true;
+    history.replaceState(null, '', location.pathname + location.search);
+    const fail = (why) => { redeeming = false; whenBody(() => showLogin(`✗ 一次性登录链接没用上：${why}`)); };
+    realFetch('/api/login-token', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token: tokenMatch[1] }),
+    }).then(async (r) => {
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) { location.replace('/'); return; }
+      fail(`${d.message || r.status}${d.next ? ' ' + d.next : ''}`);
+    }).catch((e) => fail(`bus 连不上（${e.message}）`));
+  }
+  // DOM 可能还没好（app.js 启动时就开始拉数据）
+  const on401 = () => { if (!redeeming) whenBody(() => showLogin()); };
+
   window.fetch = async function (input, init) {
     const r = await realFetch(input, init);
     const url = typeof input === 'string' ? input : (input && input.url) || '';
-    if (r.status === 401 && !/\/api\/login$/.test(url)) {
-      // DOM 可能还没好（app.js 启动时就开始拉数据）
-      if (document.body) showLogin();
-      else document.addEventListener('DOMContentLoaded', () => showLogin());
-    }
+    if (r.status === 401 && !/\/api\/login$/.test(url)) on401();
     return r;
   };
 
@@ -74,7 +105,7 @@
   window.EngLoopAuth = {
     me: null,
     ready: realFetch('/api/whoami').then(async (r) => {
-      if (r.status === 401) { if (document.body) showLogin(); else document.addEventListener('DOMContentLoaded', () => showLogin()); return null; }
+      if (r.status === 401) { on401(); return null; }
       const d = await r.json().catch(() => null);
       window.EngLoopAuth.me = d && d.username;
       return d;

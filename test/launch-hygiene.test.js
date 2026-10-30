@@ -127,11 +127,14 @@ async function main() {
       '★ deny 还在：自己的启动配置、根 .claude/（只拦 Write / Edit 工具 —— 没有 sandbox，拦不住 Bash，防手滑）');
     ok(AS.GIT_DENY.every((r) => p.deny.includes(r)) && p.deny.includes('Read(//fake/engloop/.env)'),
       'git 基线和 .env 都在 deny 里');
-    // 编排者的 hook 只有两个例外：StopFailure ＋ 工具调用日志（PreToolUse / PostToolUse / PostToolUseFailure，DUR1）。
-    //   要守的东西（不挂 check_security / Stop）照旧守住，只是把例外逐个写明 —— 多出任何一个 key 都红。
-    ok(Object.keys(s.hooks).sort().join(',') === 'PostToolUse,PostToolUseFailure,PreToolUse,StopFailure'
-      && !JSON.stringify(s.hooks).includes('check_security') && !s.hooks.Stop,
-    '不挂 check_security / Stop（挂上去会改它的 Bash 纪律）—— 只有 StopFailure 和 journal', JSON.stringify(Object.keys(s.hooks)));
+    // 编排者的 hook 只有三个例外：StopFailure ＋ 工具调用日志（PreToolUse / PostToolUse / PostToolUseFailure，DUR1）
+    //   ＋ Stop 上的 loop_guard（S1B）。要守的东西（不挂 check_security / stop_check）照旧守住，
+    //   只是把例外逐个写明 —— 多出任何一个 key 都红；Stop 上也只许有 loop_guard 那一条。
+    const stopCmds = (s.hooks.Stop || []).flatMap((e) => e.hooks.map((h) => h.command));
+    ok(Object.keys(s.hooks).sort().join(',') === 'PostToolUse,PostToolUseFailure,PreToolUse,Stop,StopFailure'
+      && !JSON.stringify(s.hooks).includes('check_security')
+      && stopCmds.length === 1 && stopCmds[0].includes('hooks/loop_guard.js'),
+    '不挂 check_security / stop_check（挂上去会改它的 Bash 纪律）—— 只有 StopFailure、journal、loop_guard', JSON.stringify(Object.keys(s.hooks)));
     ok(p.allow.includes('Edit(//fake/engloop/temp/outbox/JARVIS/**)'), '能写自己的 outbox');
     let threw = 0;
     for (const bad of [{ kind: 'orch' }, { kind: 'orchestrator', type: 'dev' }, { kind: 'crew', type: 'orchestrator' }]) {
@@ -323,10 +326,16 @@ async function main() {
     writeSession();
     const yes = await startOnce([]);
     ok(yes.r.status === 0 && argAfter(yes.a, '--resume') === SID, '★ 不带参数（DUR3 默认）⇒ argv 里有 `--resume <记录的 id>`', `${yes.r.stdout.slice(-300)} ${yes.r.stderr.slice(-300)} ${JSON.stringify(yes.a)}`);
+    // 身份文件的路径**取 provision 实际给的**（agent-start 用的就是它的 `personaFile`），不在这里写死：
+    //   这个 cwd 在 EngLoop 之外 ⇒ #24（8eeabc6）起身份文件渲染到 temp/personas/<name>.md、不再写进 cwd；
+    //   原来这里写死 path.join(realCwd, 'CLAUDE.md')，那是 #24 之前的位置 ⇒ 从 #24 起这条一直红（3acee2c 时还绿）。
+    //   再调一次 provision 是幂等的：同名同 cwd，写回同一份内容、返回同一个路径。
+    const personaWant = require('../lib/provision').provision(CREW, realCwd, 'dev').personaFile;
     ok(argAfter(yes.a, '--model') === caps.modelFor('dev') && argAfter(yes.a, '--permission-mode') === 'dontAsk'
       && argAfter(yes.a, '--settings') === path.join(SETTINGS_DIR, `${CREW}.json`)
-      && argAfter(yes.a, '--append-system-prompt-file') === path.join(realCwd, 'CLAUDE.md'),
-    'resume 时权限 / 模型 / --append-system-prompt-file 一个不少', JSON.stringify(yes.a));
+      && typeof personaWant === 'string' && argAfter(yes.a, '--append-system-prompt-file') === personaWant,
+    'resume 时权限 / 模型 / --append-system-prompt-file 一个不少（身份文件 = provision 给的那个）',
+    `want ${personaWant} · got ${argAfter(yes.a, '--append-system-prompt-file')}`);
     ok(/重启/.test(promptOf(yes.a)) && /recovery/.test(promptOf(yes.a)), 'resume 时 kick 换成「你刚被重启，先看 recovery」', promptOf(yes.a));
 
     const explicit = await startOnce(['--resume']);

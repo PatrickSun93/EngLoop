@@ -17,6 +17,9 @@
  *       node scripts/mutate-bus-auth.js M3 M7      只跑这几个
  *
  * ⚠️ bus-auth 那份每跑一次 ~25 秒（要等 relay 挂上），全部跑完约 5 分钟。不进 run-all。
+ *   S1–S16 是登录三处修复（用户名不分大小写 · session 落盘 · 一次性登录 token）：
+ *   单元那份几秒一个，bus-session 那份（起停隔离 bus 五次）约 15 秒一个。
+ *   只跑这一组：node scripts/mutate-bus-auth.js S1 S2 … S16
  */
 
 const path = require('node:path');
@@ -27,6 +30,9 @@ const HOOK = path.join(__dirname, '_srcmut-hook.js');
 const F = (p) => path.join(ROOT, p);
 const INTEG = 'test/bus-auth.test.js';
 const UNIT = 'test/auth-stamp.test.js';
+// 登录三处修复（TASK_S1A）：用户名不分大小写 · session 落盘 · 一次性登录 token
+const S_UNIT = 'test/auth-session.test.js';
+const S_INTEG = 'test/bus-session.test.js';
 
 const MUTANTS = [
   { id: 'M1', what: 'serve.js：/api/message 的 from 改回从 body 取',
@@ -73,12 +79,75 @@ const MUTANTS = [
   { id: 'M14', what: 'agent-settings.js：不加 Read(//…) deny',
     file: 'lib/agent-settings.js', from: '    ...secretFiles.map((f) => `Read(${abs(f)})`),\n', to: '',
     test: UNIT, expect: 'permissions.deny 有两条 Read' },
+
+  // ── S：TASK_S1A ──
+  { id: 'S1', what: 'auth.js：用户名比较不转小写',
+    file: 'lib/auth.js', from: 'users.filter((u) => u.username.toLowerCase() === want)', to: 'users.filter((u) => u.username === String(username))',
+    test: S_UNIT, expect: '小写 patrick ＋ 对的 key ⇒ 登录成功' },
+  // ★ 匹配不唯一有两道：findUser 只在唯一时给 user ＋ login 里显式拒并写日志。
+  //   只拆一道时另一道兜住 ⇒ 「都被拒」那条照样绿（实测：只改 findUser 是 survived）。
+  //   ⇒ S2 两道一起拆，验「拒」那条；S2b 只拆 login 那道，验「写日志」那条。
+  { id: 'S2', what: 'auth.js：匹配不唯一时取第一个（两道一起拆）',
+    specs: [
+      { file: 'lib/auth.js', from: 'user: matches.length === 1 ? matches[0] : null', to: 'user: matches[0] || null' },
+      { file: 'lib/auth.js', from: "if (matches.length > 1) { logAmbiguous('登录', username, matches); return null; }", to: '' },
+    ],
+    test: S_UNIT, expect: '表里有 Patrick 和 patrick ⇒ 两个写法' },
+  { id: 'S2b', what: 'auth.js：login 匹配不唯一时不写日志',
+    file: 'lib/auth.js', from: "if (matches.length > 1) { logAmbiguous('登录', username, matches); return null; }", to: '',
+    test: S_UNIT, expect: '拒绝原因写进 bus 日志' },
+  { id: 'S3', what: 'bus-user.js：add 不查只差大小写的名字',
+    file: 'bin/bus-user.js', from: 'if (clash.length) {', to: 'if (false) {',
+    test: S_UNIT, expect: '已有 Patrick，再 add patrick ⇒ 退 1' },
+  { id: 'S4', what: 'auth.js：createAuth 不加载 session 文件',
+    file: 'lib/auth.js', from: 'const r = loadSessions(sessionsFile, { users, now: now() });\n    sessions = r.sessions;',
+    to: 'const r = loadSessions(sessionsFile, { users, now: now() });',
+    test: S_UNIT, expect: '新实例（= bus 重启）加载文件' },
+  { id: 'S5', what: 'auth.js：加载时不按用户表复核',
+    file: 'lib/auth.js', from: '    if (!sessionStillValid(s, users)) { out.revoked += 1; continue; }\n', to: '',
+    test: S_UNIT, expect: '加载时按用户表复核' },
+  { id: 'S6', what: 'auth.js：鉴权时不按用户表复核',
+    file: 'lib/auth.js', from: 'if (!sessionStillValid(s, users)) { sessions.delete(key); persist(); return null; }', to: '',
+    test: S_UNIT, expect: '鉴权时也核：不重启、换了 key' },
+  { id: 'S7', what: 'auth.js：session 文件不设 0600',
+    file: 'lib/auth.js', from: 'fs.writeFileSync(tmp, text, { mode: 0o600 });\n  fs.chmodSync(tmp, 0o600);', to: 'fs.writeFileSync(tmp, text);',
+    test: S_UNIT, expect: '写出 session 文件，权限 0600' },
+  { id: 'S8', what: 'auth.js：session 表的键存 sid 原文',
+    file: 'lib/auth.js', from: 'sessions.set(sha256(sid), {', to: 'sessions.set(sid, {',
+    test: S_UNIT, expect: '文件里的 key 是 sid 的 sha256' },
+  { id: 'S9', what: 'auth.js：token 用过不删',
+    file: 'lib/auth.js', from: '    delete tokens[h];\n    consumed.set(h, rec.exp);', to: '    consumed.set(h, rec.exp);',
+    test: S_UNIT, expect: '用过即删：文件里没有它了' },
+  { id: 'S10', what: 'auth.js：不在内存里记用过的 token',
+    file: 'lib/auth.js', from: "if (consumed.has(h)) return { ok: false, reason: 'used' };", to: '',
+    test: S_UNIT, expect: 'token 文件被写回旧版本' },
+  { id: 'S11', what: 'auth.js：token 不判过期',
+    file: 'lib/auth.js', from: "if (rec.exp <= t0) return { ok: false, reason: 'expired' };", to: '',
+    test: S_UNIT, expect: '过了 10 分钟 ⇒ expired' },
+  { id: 'S12', what: 'auth.js：token 文件写不回去也放行',
+    file: 'lib/auth.js', from: "      return { ok: false, reason: 'store' };\n", to: '',
+    test: S_UNIT, expect: 'token 文件写不回去（删不掉）⇒ 拒' },
+  { id: 'S13', what: 'agent-settings.js：secretPaths 漏掉 session / token 文件',
+    file: 'lib/agent-settings.js', from: "    path.join(root, 'temp', 'web-sessions.json'), path.join(root, 'temp', 'login-tokens.json'),\n", to: '',
+    test: S_UNIT, expect: 'crew dev：sandbox.filesystem.denyRead 有两者' },
+  { id: 'S14', what: 'agent-settings.js：写集放行整个 temp/',
+    file: 'lib/agent-settings.js', from: "    path.join(temp, 'plugin-runs'),\n", to: "    path.join(temp, 'plugin-runs'), temp,\n",
+    test: S_UNIT, expect: 'crew dev：sandbox 写集里没有它们' },
+  { id: 'S15', what: 'serve.js：createAuth 不给 sessionsFile',
+    file: 'bin/serve.js', from: '  sessionsFile: WEB_SESSIONS_FILE,\n', to: '',
+    test: S_INTEG, expect: '重启后同一个 cookie：/api/whoami 200' },
+  { id: 'S16', what: 'serve.js：/api/login-token 挂在闸门之后',
+    file: 'bin/serve.js', from: "app.post('/api/login-token', busAuth.loginTokenHandler());\napp.use('/api', busAuth.requireAuth);",
+    to: "app.use('/api', busAuth.requireAuth);\napp.post('/api/login-token', busAuth.loginTokenHandler());",
+    test: S_INTEG, expect: 'token 换 cookie：200' },
 ];
 
 function runOne(m) {
   const env = { ...process.env,
     NODE_OPTIONS: `${process.env.NODE_OPTIONS || ''} --require=${HOOK}`.trim(),
-    ENGLOOP_SRCMUT: JSON.stringify({ file: F(m.file), from: m.from, to: m.to }) };
+    // `specs`：一个变异要同时改几处时用（_srcmut-hook 收数组）
+    ENGLOOP_SRCMUT: JSON.stringify(m.specs ? m.specs.map((s) => ({ ...s, file: F(s.file) }))
+      : { file: F(m.file), from: m.from, to: m.to }) };
   const r = spawnSync('node', [F(m.test)], { cwd: ROOT, env, encoding: 'utf8', timeout: 240000 });
   const out = `${r.stdout || ''}${r.stderr || ''}`;
   const summary = /通过 \d+ · 失败 \d+/.exec(out);

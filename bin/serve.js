@@ -84,6 +84,11 @@ const ROOT = path.join(__dirname, '..');
 //   ⑩  核验缓存     ENGLOOP_VERIFY_CACHE       ★ 完成核验的基线结果按 sha 缓存、核验日志也在这里。
 //                                                测试 bus 用假的测试命令跑出来的「基线」写进生产缓存的话，
 //                                                **同一个 sha 的真核验会命中一份假基线**
+//   ⑪  session 文件 ENGLOOP_WEB_SESSIONS_FILE  ★ 登录 / 登出 / 作废时整份重写。测试 bus 写进生产路径的话，
+//                                                **生产 bus 下次重启加载的是测试用户的 session 表**，
+//                                                Patrick 已登录的手机全部掉线
+//   ⑫  登录 token   ENGLOOP_LOGIN_TOKENS_FILE  一次性登录链接的 token 表。测试 bus 换 token 时会重写它 ⇒
+//                                                刚生成、还没点开的真链接被冲掉
 //
 // ★ ③④ 不是一眼能想到的 —— 直觉上只会去换 redis 和端口。
 //   **「隔离」这个词会让人以为它是一件事，实际上它是「所有出口都要堵」。**
@@ -138,6 +143,14 @@ const GRAPHS_ROOT = process.env.ENGLOOP_GRAPHS_ROOT
 //   （agent 写不进去：lib/agent-settings.js 的 Edit deny ＋ sandbox denyWrite —— QA 结论不许出现在 agent 能写的地方）。
 const VERIFY_CACHE = process.env.ENGLOOP_VERIFY_CACHE
   || (ISOLATED ? path.join(os.tmpdir(), `engloop-isolated-verify-${process.pid}`) : verifyLib.DEFAULT_CACHE_ROOT);
+// ★ session 落盘 ＋ 一次性登录 token（隔离表 ⑪ ⑫）。隔离兜底带 pid：
+//   两个并发的隔离 bus 共用一份的话，后写的整份覆盖先写的。
+//   ⚠️ 要测「重启后 session 还在」的测试**必须显式给** ENGLOOP_WEB_SESSIONS_FILE —— 兜底路径随 pid 变，
+//   重启之后是另一个文件（那正是兜底该有的样子：没说要共享，就不共享）。
+const WEB_SESSIONS_FILE = process.env.ENGLOOP_WEB_SESSIONS_FILE
+  || (ISOLATED ? path.join(os.tmpdir(), `engloop-isolated-web-sessions-${process.pid}.json`) : auth.WEB_SESSIONS_FILE);
+const LOGIN_TOKENS_FILE = process.env.ENGLOOP_LOGIN_TOKENS_FILE
+  || (ISOLATED ? path.join(os.tmpdir(), `engloop-isolated-login-tokens-${process.pid}.json`) : auth.LOGIN_TOKENS_FILE);
 
 // ── 身份与鉴权 ──────────────────────────────────────────────────
 //
@@ -147,7 +160,13 @@ const VERIFY_CACHE = process.env.ENGLOOP_VERIFY_CACHE
 // ★ 每次登录都现读用户表 —— `bin/bus-user.js add` 之后不用重启 bus。
 //   启动时这一次是**闸门**：读不过就不起。
 try {
-  auth.loadUsers(auth.USERS_FILE);
+  const users = auth.loadUsers(auth.USERS_FILE);
+  // ★ 只差大小写的名字不拒启动（拒了会把别的用户一起关在外面），但要说出来：
+  //   那个名字从此登录不了（匹配不唯一 ⇒ 拒），而登录方只看到「用户名或 key 不对」。
+  for (const g of auth.caseCollisions(users)) {
+    console.error(`[bus] ⚠ 用户表里有只差大小写的名字：${g.join(' / ')} —— 这个名字登录会被拒（匹配不唯一）。`
+      + `删掉或改名其中一个：${auth.USERS_FILE}`);
+  }
 } catch (e) {
   console.error(`[bus] ✗ 拒绝启动：${e.message}`);
   process.exit(78);
@@ -158,7 +177,22 @@ const ADMIN_TOKEN = auth.newAdminToken();
 const busAuth = auth.createAuth({
   adminToken: ADMIN_TOKEN,
   getUsers: () => auth.loadUsers(auth.USERS_FILE),
+  sessionsFile: WEB_SESSIONS_FILE,
+  loginTokensFile: LOGIN_TOKENS_FILE,
+  log: (m) => console.error(m),
 });
+{
+  // 加载结果打一行：「重启后还登着几个」是这个功能唯一的活性证据。
+  // 没有 loadReport = createAuth 没拿到 sessionsFile ⇒ session 只在内存里 —— 也要说出来，不能静默退化。
+  const r = busAuth.loadReport;
+  if (!r) {
+    console.error('[auth] ⚠ session 没有落盘文件 —— bus 重启后所有浏览器要重登');
+  } else {
+    if (r.warn) console.error(`[auth] ${r.warn}`);
+    console.log(`[auth] session 文件 ${r.file}：恢复 ${r.loaded} 条 · 过期丢弃 ${r.expired} 条`
+      + ` · 作废 ${r.revoked} 条（用户已删 / key 换过 / 条目坏了）`);
+  }
+}
 // ── 页面不内联在这个文件里 ──────────────────────────────────────
 // 把 HTML/CSS/JS 塞进一个模板字符串常量的话，**想改样式的人得先在一个
 // 几百行的 .js 里找 CSS**，而且编辑器对模板字符串里的 CSS 没有任何语法支持 ——
@@ -224,12 +258,14 @@ app.get('/health', async (_req, res) => {
 
 // ── 鉴权闸门 ────────────────────────────────────────────────────
 //
-// ★ `/health` 和 `/api/login` 之外，**所有 `/api/*` 都要 session 或 admin token** —— 读接口也要：
+// ★ `/health`、`/api/login`、`/api/login-token` 之外，**所有 `/api/*` 都要 session 或 admin token** —— 读接口也要：
 //   `/api/messages` 能读到所有人的对话，而 agent 的 sandbox 放行了 localhost。
-// ★ 顺序就是机制：login 挂在闸门**之前**，其余 `/api/*` 全在**之后**。
+// ★ 顺序就是机制：两个登录入口挂在闸门**之前**，其余 `/api/*` 全在**之后**。
 //   新加的 `/api/*` 路由只要写在这行下面就自动受保护 —— 不靠每个路由记得加中间件。
 // ⚠️ 静态页面（web/）不受保护：登录框本身要能加载出来，而页面里没有数据，数据全走 /api。
+//   一次性登录链接打开的就是首页（`/#login-token=…`），由 web/auth.js 读出 token 再 POST 到 /api/login-token。
 app.post('/api/login', busAuth.loginHandler());
+app.post('/api/login-token', busAuth.loginTokenHandler());
 app.use('/api', busAuth.requireAuth);
 app.post('/api/logout', busAuth.logoutHandler());
 /** 网页用它知道「我是谁」（本地回显的署名、登录框要不要弹）。 */
@@ -1189,6 +1225,8 @@ const wd = watchdog.start(redis, {
   onLog: (m) => console.log(m),
   onEvent: (e) => broadcast(e),
   ...(ISOLATED ? { tmuxApi: NOOP_TMUX } : {}),
+  // ★ loop_guard 的快速兜底（S1B）：bus 正在关停的 agent 不推 —— 关停记账器只在这个进程里，watchdog 自己看不到。
+  isShuttingDown: (name) => shutdownTracker.isPending(name),
 });
 
 // ★ **绑不上时必须响亮地死。**
@@ -1246,7 +1284,8 @@ server.listen(PORT, BUS.host, () => {
     process.exit(78);
   }
   console.log(`[bus] http://${BUS.host}:${PORT}  ws://${BUS.host}:${PORT}/ws`);
-  console.log(`[bus] 鉴权：用户表 ${auth.USERS_FILE} · admin token ${ADMIN_TOKEN_FILE}（0600，本次启动新换）`);
+  console.log(`[bus] 鉴权：用户表 ${auth.USERS_FILE} · admin token ${ADMIN_TOKEN_FILE}（0600，本次启动新换）`
+    + ` · session ${WEB_SESSIONS_FILE} · 登录 token ${LOGIN_TOKENS_FILE}`);
   console.log(`[bus] outbox: ${OUTBOX}`);
   if (ISOLATED) console.log('[bus] ⚠ 隔离模式：tmux 出口已换成 no-op，history 写临时目录');
   deliverLoop();

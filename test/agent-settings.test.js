@@ -189,9 +189,9 @@ console.log('\n【7】三种 kind 都挂 StopFailure（编排者也挂），matc
     ok(h && h.type === 'command' && h.timeout === 10, `${c.kind}/${c.name}：type command，timeout 10`);
   }
   const o = S.buildAgentSettings({ kind: 'orchestrator', name: 'JARVIS', type: 'orchestrator', cwd: R, root: R });
-  // 编排者的例外有两个：StopFailure 和工具调用日志（【8】）。要守的照旧：没有 check_security、没有 Stop。
-  ok(!JSON.stringify(o.hooks).includes('check_security') && !o.hooks.Stop,
-    '★ 编排者**仍然没有** check_security（也没有 Stop）—— 例外只有 StopFailure 和 journal', JSON.stringify(Object.keys(o.hooks)));
+  // 编排者的例外有三个：StopFailure、工具调用日志（【8】）、Stop 上的 loop_guard（【9】）。要守的照旧：没有 check_security、没有 stop_check。
+  ok(!JSON.stringify(o.hooks).includes('check_security') && !JSON.stringify(o.hooks.Stop || []).includes('stop_check'),
+    '★ 编排者**仍然没有** check_security（也没有 stop_check）—— 例外只有 StopFailure、journal、loop_guard', JSON.stringify(Object.keys(o.hooks)));
   const odd = S.buildAgentSettings({ kind: 'crew', name: "a'b $(x)", type: 'dev', cwd: CWD, root: R });
   ok(odd.hooks.StopFailure[0].hooks[0].command.endsWith(`--name 'a'\\''b $(x)'`),
     '不合格的名字被单引号整个引起来（shell 不展开 $()；hook 自己再按 NAME_RE 拒）', odd.hooks.StopFailure[0].hooks[0].command);
