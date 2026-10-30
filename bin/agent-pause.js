@@ -12,7 +12,8 @@
  *   · 它是**机制**：标记在 `temp/loop-guard/<name>.paused`，crew 的 sandbox 写不到 ⇒ agent 不能自己给自己放暂停逃出循环。
  *     （编排者没有 sandbox，它的 Bash 写得到 —— 见 lib/loop-guard.js 头注。）
  *   · 它**不打断**正在跑的回合：agent 手上的活照做完，到回合结束那一刻才停。要立刻停，那是 agent-start --stop 的事。
- *   · 编排者 CLAUDE.md / protocols 里「人说停就停」那条是给模型看的文字，**没改**；要不要让那句话指向这个命令，由 Patrick 定。
+ *   · 「人说停就停」（根 CLAUDE.md 第三条纪律、protocols/poll_rules.md §5）10-30 改成「停动作、不停 poller」，
+ *     「彻底停」指向这个命令：由人在终端跑，agent 不给自己跑（否则只有终端能撤，手机上叫不醒）。
  *
  * 退出码：0 成功 · 2 用法错。
  */
